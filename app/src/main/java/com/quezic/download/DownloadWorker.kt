@@ -99,10 +99,12 @@ class DownloadWorker @AssistedInject constructor(
 
             // Actually download the audio file
             // Note: followRedirects handles both same-protocol and cross-protocol redirects
+            // Increased timeouts for large files and slow connections
             val client = OkHttpClient.Builder()
-                .connectTimeout(60, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .writeTimeout(120, TimeUnit.SECONDS)
+                .connectTimeout(120, TimeUnit.SECONDS)
+                .readTimeout(600, TimeUnit.SECONDS)  // 10 minutes for slow downloads
+                .writeTimeout(600, TimeUnit.SECONDS)
+                .callTimeout(0, TimeUnit.SECONDS)    // No overall timeout - let it complete
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)

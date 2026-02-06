@@ -105,6 +105,7 @@ fun PlaylistScreen(
                             duration = playlist.formattedDuration,
                             coverUrl = playlist.coverUrl,
                             notDownloadedCount = viewModel.getNotDownloadedCount(),
+                            downloadProgress = uiState.downloadProgress,
                             onPlayAll = { if (songs.isNotEmpty()) onPlayAll(songs) },
                             onShuffle = { if (songs.isNotEmpty()) onPlayAll(songs.shuffled()) },
                             onDownloadAll = { viewModel.downloadAllSongs() }
@@ -208,6 +209,7 @@ fun PlaylistScreen(
                             index = index + 1,
                             allPlaylists = uiState.allPlaylists,
                             currentPlaylistId = playlistId,
+                            downloadState = uiState.songDownloadStates[song.id],
                             onClick = { onPlaySong(song) },
                             onAddToQueue = { onAddToQueue(song) },
                             onToggleFavorite = { viewModel.toggleFavorite(song) },
@@ -217,7 +219,8 @@ fun PlaylistScreen(
                             onDownload = { viewModel.downloadSong(song) },
                             onDeleteDownload = { viewModel.deleteDownload(song) },
                             onRemoveFromPlaylist = { viewModel.removeSong(song.id) },
-                            onDeleteFromLibrary = { viewModel.deleteSongFromLibrary(song) }
+                            onDeleteFromLibrary = { viewModel.deleteSongFromLibrary(song) },
+                            onRetryDownload = { viewModel.downloadSong(song) }
                         )
                     }
                 }
@@ -343,6 +346,7 @@ private fun PlaylistHeader(
     duration: String,
     coverUrl: String?,
     notDownloadedCount: Int,
+    downloadProgress: DownloadProgress,
     onPlayAll: () -> Unit,
     onShuffle: () -> Unit,
     onDownloadAll: () -> Unit
@@ -481,30 +485,56 @@ private fun PlaylistHeader(
                 }
             }
             
-            // Download All button - only show if there are songs not downloaded
-            if (notDownloadedCount > 0) {
+            // Download All button - show progress when active, count when idle
+            if (notDownloadedCount > 0 || downloadProgress.isActive) {
                 Surface(
-                    onClick = onDownloadAll,
+                    onClick = { if (!downloadProgress.isActive) onDownloadAll() },
                     shape = RoundedCornerShape(25.dp),
-                    color = Gray5
+                    color = if (downloadProgress.isActive) Gray4 else Gray5
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Rounded.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = SystemBlue
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "$notDownloadedCount",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SystemBlue
-                        )
+                        if (downloadProgress.isActive) {
+                            // Show progress indicator
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = AccentGreen
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "${downloadProgress.completedSongs}/${downloadProgress.totalSongs}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AccentGreen
+                                )
+                                if (downloadProgress.failedSongs > 0) {
+                                    Text(
+                                        "${downloadProgress.failedSongs} failed",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFFF6B6B)
+                                    )
+                                }
+                            }
+                        } else {
+                            // Show download icon with count
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = SystemBlue
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "$notDownloadedCount",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = SystemBlue
+                            )
+                        }
                     }
                 }
             }
@@ -518,6 +548,7 @@ private fun PlaylistSongItem(
     index: Int,
     allPlaylists: List<com.quezic.domain.model.Playlist>,
     currentPlaylistId: Long,
+    downloadState: com.quezic.domain.model.DownloadState?,
     onClick: () -> Unit,
     onAddToQueue: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -525,7 +556,8 @@ private fun PlaylistSongItem(
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
     onRemoveFromPlaylist: () -> Unit,
-    onDeleteFromLibrary: () -> Unit
+    onDeleteFromLibrary: () -> Unit,
+    onRetryDownload: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showPlaylistSubmenu by remember { mutableStateOf(false) }
@@ -571,14 +603,48 @@ private fun PlaylistSongItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (song.isDownloaded) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            Icons.Rounded.DownloadDone,
-                            contentDescription = "Downloaded",
-                            modifier = Modifier.size(14.dp),
-                            tint = SystemGreen
-                        )
+                    // Download status indicator
+                    when {
+                        song.isDownloaded -> {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                Icons.Rounded.DownloadDone,
+                                contentDescription = "Downloaded",
+                                modifier = Modifier.size(14.dp),
+                                tint = AccentGreen
+                            )
+                        }
+                        downloadState is com.quezic.domain.model.DownloadState.Downloading -> {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    progress = { downloadState.progress },
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AccentGreen,
+                                    trackColor = Gray4
+                                )
+                            }
+                        }
+                        downloadState is com.quezic.domain.model.DownloadState.Queued -> {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = Gray2
+                            )
+                        }
+                        downloadState is com.quezic.domain.model.DownloadState.Failed -> {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                Icons.Rounded.ErrorOutline,
+                                contentDescription = "Download failed",
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { onRetryDownload() },
+                                tint = Color(0xFFFF6B6B)
+                            )
+                        }
                     }
                     if (song.isFavorite) {
                         Spacer(modifier = Modifier.width(6.dp))
@@ -590,13 +656,44 @@ private fun PlaylistSongItem(
                         )
                     }
                 }
-                Text(
-                    text = "${song.artist} • ${song.formattedDuration}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Show download status or normal subtitle
+                when (downloadState) {
+                    is com.quezic.domain.model.DownloadState.Downloading -> {
+                        Text(
+                            text = "Downloading ${(downloadState.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AccentGreen,
+                            maxLines = 1
+                        )
+                    }
+                    is com.quezic.domain.model.DownloadState.Queued -> {
+                        Text(
+                            text = "Waiting to download...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray2,
+                            maxLines = 1
+                        )
+                    }
+                    is com.quezic.domain.model.DownloadState.Failed -> {
+                        Text(
+                            text = "Failed: ${downloadState.error.take(30)}... (tap to retry)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF6B6B),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { onRetryDownload() }
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "${song.artist} • ${song.formattedDuration}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray1,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
             Box {

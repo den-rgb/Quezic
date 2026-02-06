@@ -274,7 +274,12 @@ function fetchWithRedirects(url, headers, maxRedirects = 5) {
             }
             
             const protocol = currentUrl.startsWith('https') ? https : http;
-            const req = protocol.get(currentUrl, { headers }, (response) => {
+            const options = { 
+                headers,
+                timeout: 600000  // 10 minute timeout for large files
+            };
+            
+            const req = protocol.get(currentUrl, options, (response) => {
                 // Handle redirects (301, 302, 303, 307, 308)
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                     const redirectUrl = new URL(response.headers.location, currentUrl).toString();
@@ -287,6 +292,11 @@ function fetchWithRedirects(url, headers, maxRedirects = 5) {
                 resolve({ response, finalUrl: currentUrl });
             });
             
+            req.setTimeout(600000); // 10 minute timeout
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
             req.on('error', reject);
         };
         
@@ -300,6 +310,10 @@ function fetchWithRedirects(url, headers, maxRedirects = 5) {
  */
 app.get('/proxy/:videoId', async (req, res) => {
     const { videoId } = req.params;
+
+    // Disable timeout for this request (large file downloads)
+    req.setTimeout(0);
+    res.setTimeout(0);
 
     if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
         return res.status(400).json({ error: 'Invalid video ID' });
@@ -492,8 +506,8 @@ app.get('/', (req, res) => {
     });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server with extended timeouts for large file downloads
+const server = app.listen(PORT, () => {
     console.log(`Quezic YouTube Proxy v2 running on port ${PORT}`);
     console.log('Using yt-dlp for reliable YouTube extraction');
     
@@ -506,3 +520,8 @@ app.listen(PORT, () => {
         }
     });
 });
+
+// Set server timeouts for long-running downloads
+server.keepAliveTimeout = 620000;  // 10+ minutes
+server.headersTimeout = 630000;    // Slightly longer than keepAlive
+server.timeout = 0;                // No timeout for the server itself

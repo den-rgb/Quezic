@@ -2,6 +2,7 @@ package com.quezic.ui.screens.playlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.quezic.domain.model.DownloadState
 import com.quezic.domain.model.Playlist
 import com.quezic.domain.model.SearchResult
 import com.quezic.domain.model.Song
@@ -15,6 +16,14 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class DownloadProgress(
+    val totalSongs: Int = 0,
+    val completedSongs: Int = 0,
+    val failedSongs: Int = 0,
+    val currentlyDownloading: Int = 0,
+    val isActive: Boolean = false
+)
+
 data class PlaylistUiState(
     val playlist: Playlist? = null,
     val songs: List<Song> = emptyList(),
@@ -25,7 +34,9 @@ data class PlaylistUiState(
     val showEditDialog: Boolean = false,
     val showDeleteConfirmation: Boolean = false,
     val pendingCoverUri: String? = null,
-    val requestImagePick: Boolean = false
+    val requestImagePick: Boolean = false,
+    val downloadProgress: DownloadProgress = DownloadProgress(),
+    val songDownloadStates: Map<String, DownloadState> = emptyMap()
 )
 
 @HiltViewModel
@@ -41,12 +52,67 @@ class PlaylistViewModel @Inject constructor(
 
     private var currentPlaylistId: Long = 0
     
+    private var downloadingSongIds: Set<String> = emptySet()
+    
     init {
         // Load all playlists for "Add to playlist" feature
         viewModelScope.launch {
             playlistRepository.getAllPlaylists().collect { playlists ->
                 _uiState.update { it.copy(allPlaylists = playlists) }
             }
+        }
+        
+        // Observe download states
+        viewModelScope.launch {
+            downloadManager.downloads.collect { downloads ->
+                updateDownloadProgress(downloads)
+                // Update per-song download states
+                _uiState.update { state ->
+                    state.copy(songDownloadStates = downloads.mapValues { it.value.state })
+                }
+            }
+        }
+    }
+    
+    private fun updateDownloadProgress(downloads: Map<String, com.quezic.domain.model.DownloadItem>) {
+        val relevantDownloads = downloads.filterKeys { it in downloadingSongIds }
+        
+        if (relevantDownloads.isEmpty() && downloadingSongIds.isEmpty()) {
+            _uiState.update { it.copy(downloadProgress = DownloadProgress()) }
+            return
+        }
+        
+        val completed = relevantDownloads.count { it.value.state is DownloadState.Completed }
+        val failed = relevantDownloads.count { it.value.state is DownloadState.Failed }
+        val downloading = relevantDownloads.count { 
+            it.value.state is DownloadState.Downloading || it.value.state is DownloadState.Queued 
+        }
+        
+        val isActive = downloading > 0
+        
+        // Clear tracking when all done
+        if (!isActive && downloadingSongIds.isNotEmpty()) {
+            // Keep showing for a moment so user sees completion
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(3000)
+                if (downloadManager.downloads.value.filterKeys { it in downloadingSongIds }
+                    .none { it.value.state is DownloadState.Downloading || it.value.state is DownloadState.Queued }) {
+                    downloadingSongIds = emptySet()
+                    _uiState.update { it.copy(downloadProgress = DownloadProgress()) }
+                }
+            }
+        }
+        
+        _uiState.update { 
+            it.copy(
+                downloadProgress = DownloadProgress(
+                    totalSongs = downloadingSongIds.size,
+                    completedSongs = completed,
+                    failedSongs = failed,
+                    currentlyDownloading = downloading,
+                    isActive = isActive || downloadingSongIds.isNotEmpty()
+                )
+            )
         }
     }
 
@@ -195,13 +261,29 @@ class PlaylistViewModel @Inject constructor(
     
     fun downloadAllSongs() {
         val songs = _uiState.value.songs
-        songs.filter { !it.isDownloaded }.forEach { song ->
+        val songsToDownload = songs.filter { !it.isDownloaded }
+        
+        if (songsToDownload.isEmpty()) return
+        
+        // Track which songs we're downloading
+        downloadingSongIds = songsToDownload.map { it.id }.toSet()
+        
+        // Start all downloads
+        songsToDownload.forEach { song ->
             downloadManager.downloadSong(song, StreamQuality.HIGH)
         }
     }
     
     fun getNotDownloadedCount(): Int {
         return _uiState.value.songs.count { !it.isDownloaded }
+    }
+    
+    fun getDownloadState(songId: String): DownloadState {
+        return downloadManager.getDownloadState(songId)
+    }
+    
+    fun getSongDownloadStates(): Map<String, DownloadState> {
+        return downloadManager.downloads.value.mapValues { it.value.state }
     }
     
     fun deleteDownload(song: Song) {

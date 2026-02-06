@@ -1129,7 +1129,65 @@ class MusicExtractorService @Inject constructor(
         artistName: String,
         sources: List<SourceType>
     ): List<SearchResult> = withContext(Dispatchers.IO) {
-        search("$artistName songs", sources)
+        // Search for the artist directly, not "artist songs"
+        search(artistName, sources)
+    }
+    
+    /**
+     * Search for artists similar to the given artist
+     * Returns songs by NEW artists, not songs about or covering the given artist
+     */
+    suspend fun searchSimilarArtists(
+        artistName: String,
+        sources: List<SourceType>
+    ): List<SearchResult> = withContext(Dispatchers.IO) {
+        // Search for related music - focus on discovering new artists
+        val queries = listOf(
+            "indie rock official audio 2024",
+            "alternative music new artists",
+            "underground bands official video"
+        )
+        
+        val artistNameLower = artistName.lowercase()
+        val artistWords = artistNameLower.split(Regex("\\s+")).filter { it.length > 3 }
+        
+        val results = mutableListOf<SearchResult>()
+        for (query in queries) {
+            try {
+                val searchResults = search(query, sources)
+                // Filter out the original artist, songs mentioning the artist, and short videos
+                val filtered = searchResults.filter { result ->
+                    val resultArtistLower = result.artist.lowercase()
+                    val titleLower = result.title.lowercase()
+                    
+                    // Must be a different artist
+                    val isNotSameArtist = !resultArtistLower.contains(artistNameLower) &&
+                        !artistNameLower.contains(resultArtistLower)
+                    
+                    // Title should not mention the artist
+                    val titleDoesNotMentionArtist = !titleLower.contains(artistNameLower) &&
+                        !artistWords.all { titleLower.contains(it) }
+                    
+                    // Duration check (not a Short)
+                    val isNotShort = result.duration <= 0 || result.duration >= 90000
+                    
+                    // Not a Short video
+                    val isNotShortVideo = !titleLower.contains("#shorts") && 
+                        !titleLower.contains("shorts") &&
+                        !titleLower.contains("tiktok") &&
+                        !titleLower.contains("cover") &&
+                        !titleLower.contains("remix") &&
+                        !titleLower.contains("reaction")
+                    
+                    isNotSameArtist && titleDoesNotMentionArtist && isNotShort && isNotShortVideo
+                }
+                results.addAll(filtered.take(5))
+                if (results.size >= 10) break
+            } catch (e: Exception) {
+                Log.w(TAG, "Similar artist search failed for query: $query")
+            }
+        }
+        results.distinctBy { it.id }.take(10)
     }
 
     private suspend fun <T> retryWithBackoff(

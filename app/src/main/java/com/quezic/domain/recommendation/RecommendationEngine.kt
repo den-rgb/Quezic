@@ -67,22 +67,22 @@ class RecommendationEngine @Inject constructor(
         }
 
         // Strategy 2: Search for genre/mood keywords (good for variety)
-        // Add "music" to help filter out non-music content
         val keywordsToSearch = if (forceRefresh) {
-            profile.keywords.shuffled().take(2)
+            profile.keywords.shuffled().take(3)
         } else {
-            profile.keywords.take(2)
+            profile.keywords.take(3)
         }
         
-        keywordsToSearch.forEach { keyword ->
+        keywordsToSearch.forEach { genre ->
             try {
-                // Add "music" or "song" to search queries to filter out podcasts/shows
-                val searchQuery = "$keyword music"
+                // Search for genre-based discoveries with "official" to get real songs
+                val query = "$genre new music official audio"
+                
                 val results = extractorService.search(
-                    searchQuery,
+                    query,
                     listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
                 )
-                results.take(5).forEach { result ->
+                results.take(8).forEach { result ->
                     val isNewArtist = result.artist.lowercase() !in existingArtists
                     recommendations.add(ScoredResult(
                         result, 
@@ -95,30 +95,83 @@ class RecommendationEngine @Inject constructor(
             }
         }
 
-        // Strategy 3: Search for similar artists (limit to ensure variety)
-        // Only search 1 artist to avoid too many same-artist suggestions
-        profile.topArtists.take(1).forEach { artist ->
+        // Strategy 3: Search for artists SIMILAR TO playlist artists (to discover new artists)
+        val artistsToSearch = if (forceRefresh) {
+            profile.topArtists.shuffled().take(2)
+        } else {
+            profile.topArtists.take(2)
+        }
+        
+        artistsToSearch.forEach { artist ->
             try {
-                val results = extractorService.searchByArtist(
+                val results = extractorService.searchSimilarArtists(
                     artist,
                     listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
                 )
-                results.take(3).forEach { result ->
-                    recommendations.add(ScoredResult(result, calculateArtistScore(result, profile), false))
+                results.forEach { result ->
+                    val isNewArtist = result.artist.lowercase() !in existingArtists
+                    // Only add if it's actually a new artist
+                    if (isNewArtist) {
+                        recommendations.add(ScoredResult(
+                            result, 
+                            calculateArtistScore(result, profile) + 0.2f, // Bonus for discovery
+                            true
+                        ))
+                    }
                 }
             } catch (e: Exception) {
                 // Continue with other strategies
             }
         }
+        
+        // Strategy 4: Curated playlist discovery (to find songs from editorial playlists)
+        val playlistSearches = listOf(
+            "best new indie songs 2024 official",
+            "underground music discoveries official audio",
+            "hidden gem songs official video",
+            "indie music blog picks official",
+            "new artists to watch official audio"
+        )
+        try {
+            val playlistQuery = if (forceRefresh) playlistSearches.random() else playlistSearches.first()
+            val results = extractorService.search(
+                playlistQuery,
+                listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
+            )
+            results.take(8).forEach { result ->
+                val isNewArtist = result.artist.lowercase() !in existingArtists
+                if (isNewArtist) {
+                    recommendations.add(ScoredResult(
+                        result,
+                        0.5f, // Base discovery score
+                        true
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            // Continue
+        }
 
         // Deduplicate and filter out songs already in the playlist
         val existingSongIds = songs.map { it.id }.toSet()
         val existingTitles = songs.map { normalizeTitle(it.title) }.toSet()
+        
+        // Get existing artist names for filtering (to avoid songs mentioning these artists)
+        val existingArtistNames = songs.map { it.artist.lowercase() }.toSet()
+        
+        // Get key words from existing song titles to avoid finding "same song, different artist"
+        val existingTitleWords = songs.flatMap { song ->
+            normalizeTitle(song.title)
+                .split(Regex("\\s+"))
+                .filter { it.length > 3 }
+        }.toSet()
 
         val filteredResults = recommendations
             .filter { it.result.id !in existingSongIds }
             .filter { normalizeTitle(it.result.title) !in existingTitles }
             .filter { isLikelyMusic(it.result) } // Filter out non-music content
+            .filter { isByNewArtist(it.result, existingArtistNames) } // Filter songs mentioning existing artists
+            .filter { !hasSimilarTitle(it.result, existingTitleWords) } // Filter songs with same/similar titles
             .distinctBy { it.result.id }
         
         // Ensure a mix of familiar and new artists
@@ -184,45 +237,31 @@ class RecommendationEngine @Inject constructor(
     }
 
     /**
-     * Extract meaningful keywords from song titles
+     * Get genre/mood-based search terms instead of song title keywords
+     * This prevents finding songs with the same name by different artists
      */
     private fun extractKeywords(songs: List<Song>): List<String> {
-        val stopWords = setOf(
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-            "of", "with", "by", "from", "up", "about", "into", "through", "during",
-            "official", "video", "audio", "lyrics", "hd", "hq", "music", "song",
-            "feat", "ft", "remix", "mix", "version", "edit", "extended", "original"
+        // Use predefined genre/mood terms based on common music styles
+        // These are broad enough to discover new music without matching specific song titles
+        val genreTerms = listOf(
+            "indie rock",
+            "alternative",
+            "dream pop",
+            "shoegaze",
+            "post punk",
+            "synth pop",
+            "art rock",
+            "psychedelic",
+            "lo-fi",
+            "garage rock",
+            "new wave",
+            "darkwave",
+            "electronic",
+            "experimental"
         )
-
-        val wordCounts = mutableMapOf<String, Int>()
         
-        songs.forEach { song ->
-            val words = song.title
-                .lowercase()
-                .replace(Regex("[^a-z0-9\\s]"), " ")
-                .split(Regex("\\s+"))
-                .filter { it.length > 2 && it !in stopWords }
-
-            words.forEach { word ->
-                wordCounts[word] = (wordCounts[word] ?: 0) + 1
-            }
-
-            // Add artist as keyword
-            val artistWords = song.artist
-                .lowercase()
-                .replace(Regex("[^a-z0-9\\s]"), " ")
-                .split(Regex("\\s+"))
-                .filter { it.length > 2 && it !in stopWords }
-
-            artistWords.forEach { word ->
-                wordCounts[word] = (wordCounts[word] ?: 0) + 2 // Weight artist higher
-            }
-        }
-
-        return wordCounts.entries
-            .sortedByDescending { it.value }
-            .take(10)
-            .map { it.key }
+        // Return a shuffled subset for variety
+        return genreTerms.shuffled().take(5)
     }
 
     /**
@@ -307,11 +346,83 @@ class RecommendationEngine @Inject constructor(
     }
     
     /**
-     * Filter out non-music content like TV shows, podcasts, episodes, etc.
+     * Check if a result has a very similar title to existing songs
+     * Prevents "Love by Artist A" when you already have "Love by Artist B"
+     */
+    private fun hasSimilarTitle(result: SearchResult, existingTitleWords: Set<String>): Boolean {
+        val normalizedTitle = normalizeTitle(result.title)
+        val resultWords = normalizedTitle.split(Regex("\\s+")).filter { it.length > 3 }
+        
+        // If the title is very short (1-2 significant words), check for exact match
+        if (resultWords.size <= 2) {
+            return resultWords.any { it in existingTitleWords }
+        }
+        
+        // For longer titles, check if majority of words match existing titles
+        val matchingWords = resultWords.count { it in existingTitleWords }
+        val matchRatio = matchingWords.toFloat() / resultWords.size
+        
+        // If more than 50% of words match, it's probably the same song
+        return matchRatio > 0.5f
+    }
+    
+    /**
+     * Check if a result is by a genuinely new artist (not mentioning existing artists)
+     * Filters out covers, remixes, and songs that mention existing artist names in the title
+     */
+    private fun isByNewArtist(result: SearchResult, existingArtistNames: Set<String>): Boolean {
+        val titleLower = result.title.lowercase()
+        val artistLower = result.artist.lowercase()
+        
+        // Check if the artist is one we already have
+        for (existingArtist in existingArtistNames) {
+            // Skip very short artist names to avoid false positives
+            if (existingArtist.length < 3) continue
+            
+            // If the song is BY an existing artist, filter it out
+            if (artistLower.contains(existingArtist) || existingArtist.contains(artistLower)) {
+                return false
+            }
+            
+            // If the title mentions an existing artist (covers, remixes, reactions, etc.)
+            if (titleLower.contains(existingArtist)) {
+                return false
+            }
+            
+            // Check individual words for longer artist names
+            val artistWords = existingArtist.split(Regex("\\s+")).filter { it.length > 3 }
+            // If all significant words of the artist appear in the title, it's probably about that artist
+            if (artistWords.size >= 2 && artistWords.all { titleLower.contains(it) }) {
+                return false
+            }
+        }
+        
+        // Filter out common non-original content patterns
+        val coverPatterns = listOf(
+            "cover", "remix", "reaction", "reacts", "review",
+            "type beat", "instrumental", "karaoke", "tribute",
+            "in the style of", "sounds like", "inspired by"
+        )
+        
+        if (coverPatterns.any { titleLower.contains(it) }) {
+            return false
+        }
+        
+        return true
+    }
+    
+    /**
+     * Filter out non-music content like TV shows, podcasts, Shorts, etc.
      */
     private fun isLikelyMusic(result: SearchResult): Boolean {
         val titleLower = result.title.lowercase()
         val artistLower = result.artist.lowercase()
+        val sourceUrl = result.sourceId.lowercase()
+        
+        // Exclude YouTube Shorts (they have /shorts/ in the URL or are very short)
+        if (sourceUrl.contains("shorts") || sourceUrl.contains("/short/")) {
+            return false
+        }
         
         // Exclude TV show patterns
         val tvShowPatterns = listOf(
@@ -319,7 +430,9 @@ class RecommendationEngine @Inject constructor(
             Regex("season\\s*\\d+\\s*episode\\s*\\d+", RegexOption.IGNORE_CASE),
             Regex("episode\\s*\\d+", RegexOption.IGNORE_CASE),
             Regex("ep\\.?\\s*\\d+", RegexOption.IGNORE_CASE),
-            Regex("part\\s*\\d+\\s*of\\s*\\d+", RegexOption.IGNORE_CASE)
+            Regex("part\\s*\\d+\\s*of\\s*\\d+", RegexOption.IGNORE_CASE),
+            Regex("#shorts", RegexOption.IGNORE_CASE),
+            Regex("\\bshorts?\\b", RegexOption.IGNORE_CASE)  // "short" or "shorts" as word
         )
         
         if (tvShowPatterns.any { it.containsMatchIn(titleLower) }) {
@@ -335,7 +448,13 @@ class RecommendationEngine @Inject constructor(
             "compilation", "best of 20", "top 10", "top 20",
             "tv show", "series", "season finale", "premiere",
             "behind the scenes", "making of", "commentary",
-            "audiobook", "chapter", "reading"
+            "audiobook", "chapter", "reading",
+            "#shorts", "#short", "shorts", "tiktok", "viral",
+            "meme", "funny", "comedy", "prank", "challenge",
+            "asmr", "satisfying", "oddly satisfying",
+            "news", "breaking", "update", "announcement",
+            "stream highlights", "best moments", "clips",
+            "vlog", "day in my life", "get ready with me", "grwm"
         )
         
         if (excludeKeywords.any { titleLower.contains(it) }) {
@@ -352,14 +471,29 @@ class RecommendationEngine @Inject constructor(
             return false
         }
         
-        // Duration check: songs are usually 1-10 minutes
-        // Exclude very long content (>15 min) or very short (<30 sec)
+        // Duration check: songs are usually 1.5-10 minutes
+        // Shorts are typically under 60 seconds
+        // Very long content (>12 min) is usually not a song
         val durationMs = result.duration
         if (durationMs > 0) {
-            val durationMin = durationMs / 60000
-            if (durationMin > 15 || durationMin < 0.5) {
+            val durationSec = durationMs / 1000
+            // Exclude very short (under 90 seconds - likely Shorts) or very long (over 12 min)
+            if (durationSec < 90 || durationSec > 720) {
                 return false
             }
+        }
+        
+        // Positive signals for music
+        val musicIndicators = listOf(
+            "official video", "official audio", "official music",
+            "lyrics", "lyric video", "music video",
+            "audio", "full song", "official", "vevo",
+            "topic", "- topic", "records", "entertainment"
+        )
+        
+        // If duration is unknown, require at least one music indicator
+        if (durationMs <= 0 && !musicIndicators.any { titleLower.contains(it) || artistLower.contains(it) }) {
+            return false
         }
         
         return true
