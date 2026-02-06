@@ -54,6 +54,9 @@ class PlaylistViewModel @Inject constructor(
     
     private var downloadingSongIds: Set<String> = emptySet()
     
+    // Track whether suggestions have been loaded to avoid re-fetching on every flow emission
+    private var suggestionsLoaded: Boolean = false
+    
     init {
         // Load all playlists for "Add to playlist" feature
         viewModelScope.launch {
@@ -118,6 +121,7 @@ class PlaylistViewModel @Inject constructor(
 
     fun loadPlaylist(playlistId: Long) {
         currentPlaylistId = playlistId
+        suggestionsLoaded = false
         
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -137,8 +141,9 @@ class PlaylistViewModel @Inject constructor(
                     )
                 }
                 
-                // Load suggestions based on playlist songs
-                if (songs.isNotEmpty()) {
+                // Only load suggestions once per playlist load, not on every flow emission
+                if (songs.isNotEmpty() && !suggestionsLoaded) {
+                    suggestionsLoaded = true
                     loadSuggestions(songs)
                 }
             }

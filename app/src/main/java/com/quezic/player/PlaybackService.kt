@@ -1,35 +1,32 @@
 package com.quezic.player
 
-import android.app.PendingIntent
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
-import android.os.Bundle
+import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
-import com.quezic.MainActivity
+import com.quezic.QuezicApp
+import com.quezic.R
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Background service for music playback using Media3/ExoPlayer.
+ * Delegates to PlayerController's MediaSession for actual playback.
  * Provides:
  * - Background playback
  * - MediaSession for system integration
- * - Notification controls
+ * - Notification controls (play/pause/next/prev)
  * - Lock screen controls
+ * - Xiaomi HyperOS Music Island (camera pill)
  * - Bluetooth/headphone button support
  */
 @AndroidEntryPoint
@@ -37,127 +34,110 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         private const val TAG = "PlaybackService"
-        const val COMMAND_TOGGLE_SHUFFLE = "toggle_shuffle"
-        const val COMMAND_TOGGLE_REPEAT = "toggle_repeat"
+        private const val MEDIA_NOTIFICATION_ID = 2001
     }
 
-    private var mediaSession: MediaSession? = null
-    private var player: ExoPlayer? = null
+    @Inject
+    lateinit var playerController: PlayerController
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
-        
-        // Create smart DataSource factory that handles YouTube streams properly
-        val dataSourceFactory = YouTubeDataSourceFactory.createSmart(this)
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(dataSourceFactory)
-        
-        // Create ExoPlayer with custom media source factory
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .setUsage(C.USAGE_MEDIA)
-                    .build(),
-                true // Handle audio focus
-            )
-            .setHandleAudioBecomingNoisy(true) // Pause when headphones disconnected
-            .build()
-            .apply {
-                addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        Log.e(TAG, "Playback error: ${error.message}", error)
-                    }
-                })
+
+        // Ensure the notification channel exists.
+        // Also created in QuezicApp.onCreate(), but repeated here in case the system
+        // restarts the service independently.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+
+            // Delete all legacy channels (Android channels are immutable once created)
+            QuezicApp.LEGACY_PLAYBACK_CHANNEL_IDS.forEach { oldId ->
+                manager.deleteNotificationChannel(oldId)
             }
 
-        // Create pending intent for notification tap
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+            val channel = NotificationChannel(
+                QuezicApp.PLAYBACK_CHANNEL_ID,
+                getString(R.string.notification_channel_playback),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Music playback controls"
+                setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(channel)
 
-        // Create MediaSession
-        mediaSession = MediaSession.Builder(this, player!!)
-            .setSessionActivity(pendingIntent)
-            .setCallback(MediaSessionCallback())
+            // Diagnostic: verify the channel was actually created with correct settings
+            val created = manager.getNotificationChannel(QuezicApp.PLAYBACK_CHANNEL_ID)
+            Log.d(TAG, "Channel '${QuezicApp.PLAYBACK_CHANNEL_ID}' created: " +
+                "importance=${created?.importance}, " +
+                "lockscreen=${created?.lockscreenVisibility}, " +
+                "sound=${created?.sound}")
+        }
+
+        // Use Media3's DefaultMediaNotificationProvider with NO custom wrapping.
+        // It already creates a proper MediaStyle notification with VISIBILITY_PUBLIC,
+        // the session token, and playback actions. Custom wrappers can interfere
+        // with how OEM skins (HyperOS, OneUI) detect media notifications.
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(QuezicApp.PLAYBACK_CHANNEL_ID)
+            .setChannelName(R.string.notification_channel_playback)
+            .setNotificationId(MEDIA_NOTIFICATION_ID)
             .build()
+
+        setMediaNotificationProvider(notificationProvider)
+
+        // CRITICAL: Register the session with this service so it manages the notification.
+        //
+        // In the standard Media3 pattern, addSession() is called internally in onBind()
+        // when a MediaController connects. But in this app, PlayerController manages the
+        // MediaSession directly – no MediaController ever binds to this service.
+        // Without addSession(), the internal MediaNotificationManager is never activated,
+        // onUpdateNotification() is never called, and no notification is ever posted.
+        playerController.mediaSession?.let { session ->
+            addSession(session)
+            Log.d(TAG, "Session added to service, notification management active")
+        }
+
+        Log.d(TAG, "PlaybackService created, channel=${QuezicApp.PLAYBACK_CHANNEL_ID}, " +
+            "mediaSession=${playerController.mediaSession != null}, " +
+            "player.mediaItemCount=${playerController.mediaSession?.player?.mediaItemCount}")
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession
+        val session = playerController.mediaSession
+        Log.d(TAG, "onGetSession: session=${session != null}, " +
+            "player.playWhenReady=${session?.player?.playWhenReady}, " +
+            "player.mediaItemCount=${session?.player?.mediaItemCount}")
+        return session
+    }
+
+    @OptIn(UnstableApi::class)
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        // Log notification updates for diagnostics
+        val player = session.player
+        Log.d(TAG, "onUpdateNotification: foregroundRequired=$startInForegroundRequired, " +
+            "playWhenReady=${player.playWhenReady}, " +
+            "mediaItemCount=${player.mediaItemCount}, " +
+            "title=${player.currentMediaItem?.mediaMetadata?.title}")
+
+        // Always request foreground to ensure the notification is posted via startForeground().
+        // Without this, the system may only call notificationManager.notify() which some OEMs
+        // (Xiaomi, Samsung) don't treat as a proper media notification.
+        super.onUpdateNotification(session, true)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
+        val player = playerController.mediaSession?.player
         if (player?.playWhenReady == false || player?.mediaItemCount == 0) {
             stopSelf()
         }
     }
 
     override fun onDestroy() {
-        mediaSession?.run {
-            player.release()
-            release()
-            mediaSession = null
-        }
+        Log.d(TAG, "PlaybackService destroyed")
         super.onDestroy()
-    }
-
-    private inner class MediaSessionCallback : MediaSession.Callback {
-        
-        override fun onConnect(
-            session: MediaSession,
-            controller: MediaSession.ControllerInfo
-        ): MediaSession.ConnectionResult {
-            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-                .add(SessionCommand(COMMAND_TOGGLE_SHUFFLE, Bundle.EMPTY))
-                .add(SessionCommand(COMMAND_TOGGLE_REPEAT, Bundle.EMPTY))
-                .build()
-            
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(sessionCommands)
-                .build()
-        }
-
-        override fun onCustomCommand(
-            session: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            customCommand: SessionCommand,
-            args: Bundle
-        ): ListenableFuture<SessionResult> {
-            when (customCommand.customAction) {
-                COMMAND_TOGGLE_SHUFFLE -> {
-                    session.player.shuffleModeEnabled = !session.player.shuffleModeEnabled
-                }
-                COMMAND_TOGGLE_REPEAT -> {
-                    session.player.repeatMode = when (session.player.repeatMode) {
-                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                        else -> Player.REPEAT_MODE_OFF
-                    }
-                }
-            }
-            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-        }
-
-        override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>
-        ): ListenableFuture<MutableList<MediaItem>> {
-            // Resolve media items (could add stream URL resolution here)
-            val resolvedItems = mediaItems.map { item ->
-                item.buildUpon()
-                    .setUri(item.requestMetadata.mediaUri ?: item.localConfiguration?.uri)
-                    .build()
-            }.toMutableList()
-            
-            return Futures.immediateFuture(resolvedItems)
-        }
     }
 }
 

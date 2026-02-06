@@ -377,6 +377,75 @@ class MusicExtractorService @Inject constructor(
         }
     }
 
+    /**
+     * Result of a fallback source search.
+     */
+    data class FallbackResult(
+        val streamUrl: String,
+        val newSourceType: SourceType,
+        val newSourceId: String
+    )
+
+    /**
+     * Try to get a download URL from the alternate source when the primary fails.
+     *
+     * - If SoundCloud fails (Go+ track), searches YouTube for the same song.
+     * - If YouTube fails (HLS only, auth required), searches SoundCloud.
+     */
+    suspend fun getDownloadUrlFromFallbackSource(
+        originalSourceType: SourceType,
+        songTitle: String,
+        songArtist: String,
+        quality: StreamQuality = StreamQuality.HIGH
+    ): FallbackResult? = withContext(Dispatchers.IO) {
+        val query = "$songArtist $songTitle"
+        Log.d(TAG, "Trying fallback source for '$query' (original: $originalSourceType)")
+
+        try {
+            when (originalSourceType) {
+                SourceType.SOUNDCLOUD -> {
+                    // SoundCloud failed → try YouTube
+                    Log.d(TAG, "Searching YouTube as fallback...")
+                    val results = searchYouTube(query)
+                    val match = results.firstOrNull()
+                    if (match != null) {
+                        val url = getYouTubeStreamUrl(match.sourceId, quality, forDownload = true)
+                        if (url != null && !url.contains(".m3u8")) {
+                            Log.d(TAG, "Found YouTube fallback: ${match.title}")
+                            return@withContext FallbackResult(url, SourceType.YOUTUBE, match.sourceId)
+                        }
+                    }
+                    Log.w(TAG, "No suitable YouTube fallback found")
+                    null
+                }
+                SourceType.YOUTUBE -> {
+                    // YouTube failed → try SoundCloud
+                    Log.d(TAG, "Searching SoundCloud as fallback...")
+                    val results = searchSoundCloud(query)
+                    val match = results.firstOrNull()
+                    if (match != null) {
+                        val url = try {
+                            getSoundCloudStreamUrl(match.sourceId, quality, forDownload = true)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "SoundCloud fallback stream failed: ${e.message}")
+                            null
+                        }
+                        if (url != null) {
+                            Log.d(TAG, "Found SoundCloud fallback: ${match.title}")
+                            return@withContext FallbackResult(url, SourceType.SOUNDCLOUD, match.sourceId)
+                        }
+                    }
+                    Log.w(TAG, "No suitable SoundCloud fallback found")
+                    null
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallback source search failed: ${e.message}", e)
+            null
+        }
+    }
+
     private suspend fun getYouTubeStreamUrl(
         videoUrl: String,
         quality: StreamQuality,

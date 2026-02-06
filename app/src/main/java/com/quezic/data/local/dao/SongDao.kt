@@ -67,6 +67,9 @@ interface SongDao {
     @Query("UPDATE songs SET localPath = :localPath WHERE id = :songId")
     suspend fun updateLocalPath(songId: String, localPath: String?)
     
+    @Query("UPDATE songs SET sourceType = :sourceType, sourceId = :sourceId WHERE id = :songId")
+    suspend fun updateSource(songId: String, sourceType: String, sourceId: String)
+    
     @Delete
     suspend fun deleteSong(song: SongEntity)
     

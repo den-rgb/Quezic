@@ -2,6 +2,7 @@ package com.quezic.di
 
 import android.content.Context
 import com.quezic.domain.repository.MusicRepository
+import com.quezic.player.AudioVisualizerHelper
 import com.quezic.player.PlayerController
 import dagger.Module
 import dagger.Provides
@@ -18,8 +19,9 @@ object PlayerModule {
     @Singleton
     fun providePlayerController(
         @ApplicationContext context: Context,
-        musicRepository: MusicRepository
+        musicRepository: MusicRepository,
+        visualizerHelper: AudioVisualizerHelper
     ): PlayerController {
-        return PlayerController(context, musicRepository)
+        return PlayerController(context, musicRepository, visualizerHelper)
     }
 }

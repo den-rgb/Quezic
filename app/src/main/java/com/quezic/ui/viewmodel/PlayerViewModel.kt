@@ -38,6 +38,12 @@ class PlayerViewModel @Inject constructor(
     private val _playlistDialogState = MutableStateFlow(PlaylistDialogState())
     val playlistDialogState: StateFlow<PlaylistDialogState> = _playlistDialogState.asStateFlow()
 
+    /** FFT data for audio visualization (64 normalized bands, 0..1) */
+    val fftData: StateFlow<FloatArray> = playerController.visualizerHelper.fftData
+
+    /** Whether the audio visualizer is actively capturing */
+    val isVisualizerActive: StateFlow<Boolean> = playerController.visualizerHelper.isActive
+
     init {
         viewModelScope.launch {
             playerController.playerState.collect { state ->
@@ -161,6 +167,15 @@ class PlayerViewModel @Inject constructor(
             _playlistDialogState.update { state ->
                 state.copy(songInPlaylists = state.songInPlaylists - playlistId)
             }
+        }
+    }
+
+    fun createPlaylistAndAddSong(name: String, description: String) {
+        viewModelScope.launch {
+            val song = _playlistDialogState.value.songToAdd ?: return@launch
+            val playlistId = playlistRepository.createPlaylist(name, description)
+            playlistRepository.addSongToPlaylist(playlistId, song.id)
+            hideAddToPlaylistDialog()
         }
     }
 }

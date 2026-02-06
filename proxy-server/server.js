@@ -26,6 +26,44 @@ const COOKIE_FILE = process.env.COOKIE_FILE || path.join(__dirname, 'cookies.txt
 // Cache stream URLs for 30 minutes (YouTube URLs expire after ~6 hours)
 const streamCache = new NodeCache({ stdTTL: 1800, checkperiod: 300 });
 
+// Concurrency limiter to prevent memory exhaustion
+const MAX_CONCURRENT_EXTRACTIONS = 2; // Limit to 2 simultaneous yt-dlp processes
+let currentExtractions = 0;
+const extractionQueue = [];
+
+/**
+ * Queue wrapper for extraction to limit memory usage
+ */
+function queueExtraction(videoId) {
+    return new Promise((resolve, reject) => {
+        const task = { videoId, resolve, reject };
+        
+        if (currentExtractions < MAX_CONCURRENT_EXTRACTIONS) {
+            runExtraction(task);
+        } else {
+            console.log(`Queuing extraction for ${videoId} (${extractionQueue.length + 1} in queue)`);
+            extractionQueue.push(task);
+        }
+    });
+}
+
+async function runExtraction(task) {
+    currentExtractions++;
+    try {
+        const result = await doExtractStreamUrl(task.videoId);
+        task.resolve(result);
+    } catch (error) {
+        task.reject(error);
+    } finally {
+        currentExtractions--;
+        // Process next in queue
+        if (extractionQueue.length > 0) {
+            const next = extractionQueue.shift();
+            runExtraction(next);
+        }
+    }
+}
+
 /**
  * Check if cookies file exists and is valid
  */
@@ -33,8 +71,9 @@ function hasCookies() {
     try {
         if (fs.existsSync(COOKIE_FILE)) {
             const content = fs.readFileSync(COOKIE_FILE, 'utf8');
-            // Check for Netscape cookie format
-            return content.includes('.youtube.com') || content.includes('youtube.com');
+            // Check for Netscape cookie format - needs YouTube or Google auth cookies
+            return content.includes('.youtube.com') || content.includes('youtube.com') || 
+                   content.includes('.google.com');
         }
     } catch (e) {
         console.log('Cookie file check error:', e.message);
@@ -46,14 +85,29 @@ app.use(cors());
 app.use(express.json());
 
 /**
- * Extract audio stream URL using yt-dlp
- * Uses cookies if available, then tries multiple client strategies
+ * Extract audio stream URL using yt-dlp (queued to limit memory usage)
  */
 async function extractStreamUrl(videoId) {
     // Check cache first
     const cached = streamCache.get(videoId);
     if (cached) {
         console.log(`Cache hit for ${videoId}`);
+        return cached;
+    }
+    
+    // Use queue to limit concurrent extractions
+    return queueExtraction(videoId);
+}
+
+/**
+ * Actual extraction logic - called from queue
+ * Uses cookies if available, then tries multiple client strategies
+ */
+async function doExtractStreamUrl(videoId) {
+    // Double-check cache (might have been populated while waiting in queue)
+    const cached = streamCache.get(videoId);
+    if (cached) {
+        console.log(`Cache hit for ${videoId} (after queue)`);
         return cached;
     }
 
@@ -72,55 +126,27 @@ async function extractStreamUrl(videoId) {
     // Common args for age bypass and better extraction
     const ageBypass = '--age-limit 21';
     
-    // Try different extraction strategies
-    // With cookies, we primarily use web client; without cookies, try mobile clients first
+    // Reduced strategies to save memory - only try the most effective ones
     const strategies = cookiesAvailable ? [
-        // With cookies: try tv_embedded first (best for age-restricted)
-        {
-            name: 'tv_embedded_with_cookies',
-            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=tv_embedded" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
-        // Web client with age bypass
+        // With cookies: web client usually works best
         {
             name: 'web_with_cookies',
-            args: `${cookieArg} ${ageBypass} -f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
+            args: `${cookieArg} ${ageBypass} -f "bestaudio[ext=m4a]/bestaudio" -j`
         },
-        // iOS client (good for age-restricted)
+        // iOS as backup (good for age-restricted)
         {
             name: 'ios_with_cookies',
             args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
-        // Android client
-        {
-            name: 'android_with_cookies',
-            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
-        // MediaConnect client (sometimes bypasses age gates)
-        {
-            name: 'mediaconnect_with_cookies',
-            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=mediaconnect" -f "bestaudio[ext=m4a]/bestaudio" -j`
         }
     ] : [
-        // Without cookies: try clients that can bypass age restrictions
-        {
-            name: 'tv_embedded',
-            args: `${ageBypass} --extractor-args "youtube:player_client=tv_embedded" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
+        // Without cookies: try iOS first (least likely to be blocked)
         {
             name: 'ios_client',
             args: `${ageBypass} --extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
         },
         {
-            name: 'android_client',
-            args: `${ageBypass} --extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
-        {
-            name: 'mediaconnect',
-            args: `${ageBypass} --extractor-args "youtube:player_client=mediaconnect" -f "bestaudio[ext=m4a]/bestaudio" -j`
-        },
-        {
             name: 'web_client',
-            args: `${ageBypass} -f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
+            args: `${ageBypass} -f "bestaudio[ext=m4a]/bestaudio" -j`
         }
     ];
     
@@ -403,9 +429,11 @@ app.post('/cookies', express.text({ type: '*/*', limit: '1mb' }), (req, res) => 
             return res.status(400).json({ error: 'Cookie data required in request body' });
         }
         
-        // Validate it looks like Netscape cookie format
-        if (!cookies.includes('.youtube.com') && !cookies.includes('youtube.com')) {
-            return res.status(400).json({ error: 'Invalid cookie format - must contain youtube.com cookies' });
+        // Validate it looks like Netscape cookie format with YouTube or Google auth cookies
+        const hasYouTube = cookies.includes('.youtube.com') || cookies.includes('youtube.com');
+        const hasGoogle = cookies.includes('.google.com');
+        if (!hasYouTube && !hasGoogle) {
+            return res.status(400).json({ error: 'Invalid cookie format - must contain YouTube or Google cookies' });
         }
         
         // Write cookies to file
@@ -414,11 +442,12 @@ app.post('/cookies', express.text({ type: '*/*', limit: '1mb' }), (req, res) => 
         // Clear cache to force re-extraction with new cookies
         streamCache.flushAll();
         
-        console.log('Cookies updated successfully');
+        const cookieLines = cookies.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+        console.log(`Cookies updated successfully (${cookieLines.length} entries)`);
         res.json({ 
             success: true, 
-            message: 'Cookies saved successfully',
-            cookieCount: (cookies.match(/youtube\.com/g) || []).length
+            message: `Cookies saved successfully (${cookieLines.length} entries)`,
+            cookieCount: cookieLines.length
         });
     } catch (error) {
         console.error('Cookie save error:', error);
@@ -475,12 +504,22 @@ app.get('/health', async (req, res) => {
         denoVersion = 'not installed';
     }
     
+    // Memory usage
+    const memUsage = process.memoryUsage();
+    const memMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    
     res.json({ 
         status: 'ok',
         cacheSize: streamCache.keys().length,
         ytdlpVersion,
         denoVersion,
-        hasCookies: hasCookies()
+        hasCookies: hasCookies(),
+        queue: {
+            active: currentExtractions,
+            waiting: extractionQueue.length,
+            maxConcurrent: MAX_CONCURRENT_EXTRACTIONS
+        },
+        memoryMB: memMB
     });
 });
 

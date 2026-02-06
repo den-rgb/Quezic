@@ -34,11 +34,20 @@ class DownloadWorker @AssistedInject constructor(
     @Assisted private val context: Context,
     @Assisted private val params: WorkerParameters,
     private val extractorService: MusicExtractorService,
-    private val songDao: SongDao
+    private val songDao: SongDao,
+    private val downloadManager: DownloadManager
 ) : CoroutineWorker(context, params) {
 
     private val notificationManager = 
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    // Each worker MUST have a unique notification ID for concurrent foreground execution.
+    // If workers share the same ID, Android serializes them (only one foreground at a time).
+    private val uniqueNotificationId: Int by lazy {
+        val songId = inputData.getString(KEY_SONG_ID) ?: id.toString()
+        // Map to a range that won't collide with media notification (2001) or completion/error (3002-3003)
+        NOTIFICATION_ID_BASE + (songId.hashCode() and 0x7FFFFFFF) % NOTIFICATION_ID_RANGE
+    }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val songId = inputData.getString(KEY_SONG_ID) ?: return@withContext Result.failure()
@@ -56,18 +65,46 @@ class DownloadWorker @AssistedInject constructor(
             setForeground(createForegroundInfo(songTitle, songArtist, 0))
 
             // Get download URL (prefers progressive/direct streams over HLS)
-            val streamUrl = extractorService.getDownloadUrl(sourceType, sourceId, quality)
-                ?: return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to "Could not get download URL (no direct stream available)")
-                )
+            var actualStreamUrl = extractorService.getDownloadUrl(sourceType, sourceId, quality)
+            var actualSourceType = sourceType
 
-            // Check if we got an HLS URL (which can't be directly downloaded)
-            if (streamUrl.contains(".m3u8") || streamUrl.contains("/playlist/")) {
-                Log.e(TAG, "Got HLS URL instead of direct stream - download not supported: $streamUrl")
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to "This song only has streaming format (HLS) - direct download not available")
+            // Check if primary source failed or returned HLS (not downloadable)
+            val primaryFailed = actualStreamUrl == null
+            val isHls = actualStreamUrl?.let { 
+                it.contains(".m3u8") || it.contains("/playlist/") 
+            } == true
+
+            if (primaryFailed || isHls) {
+                if (isHls) {
+                    Log.w(TAG, "Primary source returned HLS stream, trying fallback...")
+                } else {
+                    Log.w(TAG, "Primary source failed, trying fallback...")
+                }
+                
+                // Try the alternate source (SoundCloud→YouTube or YouTube→SoundCloud)
+                val fallback = extractorService.getDownloadUrlFromFallbackSource(
+                    sourceType, songTitle, songArtist, quality
                 )
+                
+                if (fallback != null) {
+                    Log.d(TAG, "Using fallback source: ${fallback.newSourceType}")
+                    actualStreamUrl = fallback.streamUrl
+                    actualSourceType = fallback.newSourceType
+                    // Update the song's source in the database so future plays also use this source
+                    songDao.updateSource(songId, fallback.newSourceType.name, fallback.newSourceId)
+                } else if (primaryFailed) {
+                    return@withContext Result.failure(
+                        workDataOf(KEY_ERROR to "Could not get download URL from any source")
+                    )
+                } else {
+                    // HLS with no fallback
+                    return@withContext Result.failure(
+                        workDataOf(KEY_ERROR to "Only streaming format available - direct download not supported")
+                    )
+                }
             }
+            
+            val streamUrl = actualStreamUrl!!
 
             // Create downloads directory
             val downloadsDir = File(context.getExternalFilesDir(null), "music")
@@ -77,14 +114,14 @@ class DownloadWorker @AssistedInject constructor(
 
             // Determine file extension based on content type or URL
             // YouTube audio via proxy is typically M4A/AAC, SoundCloud can be MP3
-            // Note: Proxy URLs don't have file extensions, so we rely on source type
+            // Note: Proxy URLs don't have file extensions, so we rely on actual source type
             val extension = when {
                 streamUrl.contains(".mp3") -> "mp3"
                 streamUrl.contains(".m4a") -> "m4a"
                 streamUrl.contains(".webm") -> "webm"
                 streamUrl.contains(".opus") -> "opus"
-                sourceType == SourceType.SOUNDCLOUD -> "mp3"
-                sourceType == SourceType.YOUTUBE -> "m4a" // YouTube audio is M4A/AAC
+                actualSourceType == SourceType.SOUNDCLOUD -> "mp3"
+                actualSourceType == SourceType.YOUTUBE -> "m4a"
                 else -> "m4a"
             }
 
@@ -206,8 +243,13 @@ class DownloadWorker @AssistedInject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val songId = inputData.getString(KEY_SONG_ID) ?: ""
+        val queueSize = downloadManager.getQueueSize()
+        val queuePos = downloadManager.getQueuePosition(songId) ?: 1
+        val titleText = if (queueSize > 1) "Downloading ($queuePos of $queueSize)" else "Downloading"
+
         val notification = NotificationCompat.Builder(context, QuezicApp.DOWNLOAD_CHANNEL_ID)
-            .setContentTitle("Downloading")
+            .setContentTitle(titleText)
             .setContentText("$artist - $title")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setProgress(100, progress, progress == 0)
@@ -216,14 +258,15 @@ class DownloadWorker @AssistedInject constructor(
             .build()
 
         // Android 14 (API 34) requires specifying foreground service type
+        // Use uniqueNotificationId so multiple workers can run foreground concurrently
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ForegroundInfo(
-                NOTIFICATION_ID,
+                uniqueNotificationId,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             )
         } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
+            ForegroundInfo(uniqueNotificationId, notification)
         }
     }
 
@@ -263,8 +306,11 @@ class DownloadWorker @AssistedInject constructor(
         const val KEY_FILE_PATH = "file_path"
         const val KEY_ERROR = "error"
 
-        private const val NOTIFICATION_ID = 1001
-        private const val COMPLETION_NOTIFICATION_ID = 1002
-        private const val ERROR_NOTIFICATION_ID = 1003
+        // IDs 2001 reserved for media playback notification (PlaybackService)
+        // Each concurrent worker gets a unique ID in range [4000..4999] to avoid collisions
+        private const val NOTIFICATION_ID_BASE = 4000
+        private const val NOTIFICATION_ID_RANGE = 1000
+        private const val COMPLETION_NOTIFICATION_ID = 3002
+        private const val ERROR_NOTIFICATION_ID = 3003
     }
 }

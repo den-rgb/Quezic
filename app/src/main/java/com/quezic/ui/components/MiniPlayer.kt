@@ -34,6 +34,7 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onClick: () -> Unit,
     onOpenInYouTube: () -> Unit = {},
+    fftData: FloatArray = FloatArray(0),
     modifier: Modifier = Modifier
 ) {
     val song = playerState.currentSong ?: return
@@ -112,13 +113,22 @@ fun MiniPlayer(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = song.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Gray1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // Show mini visualizer under the title if FFT data is available
+                    if (playerState.isPlaying && fftData.isNotEmpty()) {
+                        MiniVisualizer(
+                            fftData = fftData,
+                            isPlaying = playerState.isPlaying,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    } else {
+                        Text(
+                            text = song.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray1,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.width(8.dp))

@@ -485,9 +485,8 @@ fun SearchScreen(
             onRemoveFromPlaylist = { playlistId ->
                 viewModel.removeSongFromPlaylist(playlistId)
             },
-            onCreateNewPlaylist = {
-                // TODO: Navigate to create playlist or show dialog
-                viewModel.hideAddToPlaylistDialog()
+            onCreateNewPlaylist = { name, description ->
+                viewModel.createPlaylistAndAddSong(name, description)
             }
         )
     }

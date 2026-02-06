@@ -1,5 +1,6 @@
 package com.quezic.di
 
+import com.quezic.data.remote.LastFmService
 import com.quezic.data.remote.MusicExtractorService
 import com.quezic.domain.recommendation.RecommendationEngine
 import dagger.Module
@@ -14,9 +15,16 @@ object RecommendationModule {
 
     @Provides
     @Singleton
+    fun provideLastFmService(): LastFmService {
+        return LastFmService()
+    }
+
+    @Provides
+    @Singleton
     fun provideRecommendationEngine(
-        extractorService: MusicExtractorService
+        extractorService: MusicExtractorService,
+        lastFmService: LastFmService
     ): RecommendationEngine {
-        return RecommendationEngine(extractorService)
+        return RecommendationEngine(extractorService, lastFmService)
     }
 }

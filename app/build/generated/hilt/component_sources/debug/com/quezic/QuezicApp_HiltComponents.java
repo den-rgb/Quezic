@@ -14,6 +14,7 @@ import com.quezic.ui.screens.library.LibraryViewModel_HiltModules;
 import com.quezic.ui.screens.playlist.PlaylistViewModel_HiltModules;
 import com.quezic.ui.screens.search.SearchViewModel_HiltModules;
 import com.quezic.ui.screens.settings.SettingsViewModel_HiltModules;
+import com.quezic.ui.screens.soundcloud.ImportSoundCloudViewModel_HiltModules;
 import com.quezic.ui.screens.spotify.ImportSpotifyViewModel_HiltModules;
 import com.quezic.ui.viewmodel.PlayerViewModel_HiltModules;
 import dagger.Binds;
@@ -178,6 +179,7 @@ public final class QuezicApp_HiltComponents {
           HiltWrapper_ActivityRetainedComponentManager_LifecycleModule.class,
           HiltWrapper_SavedStateHandleModule.class,
           HomeViewModel_HiltModules.KeyModule.class,
+          ImportSoundCloudViewModel_HiltModules.KeyModule.class,
           ImportSpotifyViewModel_HiltModules.KeyModule.class,
           LibraryViewModel_HiltModules.KeyModule.class,
           PlayerViewModel_HiltModules.KeyModule.class,
@@ -223,6 +225,7 @@ public final class QuezicApp_HiltComponents {
       modules = {
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
           HomeViewModel_HiltModules.BindsModule.class,
+          ImportSoundCloudViewModel_HiltModules.BindsModule.class,
           ImportSpotifyViewModel_HiltModules.BindsModule.class,
           LibraryViewModel_HiltModules.BindsModule.class,
           PlayerViewModel_HiltModules.BindsModule.class,

@@ -21,10 +21,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.quezic.ui.components.AddToPlaylistDialog
+import com.quezic.ui.components.AmbientVisualizer
 import com.quezic.ui.components.MiniPlayer
 import com.quezic.ui.navigation.Screen
 import com.quezic.ui.navigation.bottomNavItems
 import com.quezic.ui.screens.home.HomeScreen
+import com.quezic.ui.screens.soundcloud.ImportSoundCloudScreen
 import com.quezic.ui.screens.spotify.ImportSpotifyScreen
 import com.quezic.ui.screens.library.LibraryScreen
 import com.quezic.ui.screens.player.PlayerScreen
@@ -46,6 +48,7 @@ fun QuezicApp(
     
     val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()
     val playlistDialogState by playerViewModel.playlistDialogState.collectAsStateWithLifecycle()
+    val fftData by playerViewModel.fftData.collectAsStateWithLifecycle()
     val showMiniPlayer = playerState.currentSong != null && 
         currentDestination?.route != Screen.Player.route
 
@@ -59,9 +62,8 @@ fun QuezicApp(
             onDismiss = { playerViewModel.hideAddToPlaylistDialog() },
             onAddToPlaylist = { playlistId -> playerViewModel.addSongToPlaylist(playlistId) },
             onRemoveFromPlaylist = { playlistId -> playerViewModel.removeSongFromPlaylist(playlistId) },
-            onCreateNewPlaylist = { 
-                playerViewModel.hideAddToPlaylistDialog()
-                // Could navigate to create playlist here
+            onCreateNewPlaylist = { name, description ->
+                playerViewModel.createPlaylistAndAddSong(name, description)
             }
         )
     }
@@ -102,7 +104,8 @@ fun QuezicApp(
                         onPlayPause = { playerViewModel.togglePlayPause() },
                         onNext = { playerViewModel.playNext() },
                         onClick = { navController.navigate(Screen.Player.route) },
-                        onOpenInYouTube = { playerViewModel.openInYouTubeApp() }
+                        onOpenInYouTube = { playerViewModel.openInYouTubeApp() },
+                        fftData = fftData
                     )
                 }
                 
@@ -155,20 +158,24 @@ fun QuezicApp(
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Home.route,
+        Box(
             modifier = Modifier
                 .padding(innerPadding)
                 .background(Color.Black)
         ) {
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Home.route,
+                modifier = Modifier.fillMaxSize()
+            ) {
             composable(Screen.Home.route) {
                 HomeScreen(
                     onNavigateToSearch = { navController.navigate(Screen.Search.route) },
                     onNavigateToPlaylist = { playlistId ->
                         navController.navigate(Screen.Playlist.createRoute(playlistId))
                     },
-                    onPlaySong = { song -> playerViewModel.playSong(song) }
+                    onPlaySong = { song -> playerViewModel.playSong(song) },
+                    onPlaySongInContext = { songs, startIndex -> playerViewModel.playQueue(songs, startIndex) }
                 )
             }
             
@@ -193,10 +200,14 @@ fun QuezicApp(
                     onNavigateToImportSpotify = {
                         navController.navigate(Screen.ImportSpotify.route)
                     },
+                    onNavigateToImportSoundCloud = {
+                        navController.navigate(Screen.ImportSoundCloud.route)
+                    },
                     onNavigateToSettings = {
                         navController.navigate(Screen.Settings.route)
                     },
                     onPlaySong = { song -> playerViewModel.playSong(song) },
+                    onPlaySongInContext = { songs, startIndex -> playerViewModel.playQueue(songs, startIndex) },
                     onAddToQueue = { song -> playerViewModel.addToQueue(song) }
                 )
             }
@@ -218,7 +229,7 @@ fun QuezicApp(
                     onNavigateBack = { navController.popBackStack() },
                     onPlaySong = { song -> playerViewModel.playSong(song) },
                     onAddToQueue = { song -> playerViewModel.addToQueue(song) },
-                    onPlayAll = { songs -> playerViewModel.playQueue(songs) }
+                    onPlayAll = { songs, startIndex -> playerViewModel.playQueue(songs, startIndex) }
                 )
             }
             
@@ -232,10 +243,31 @@ fun QuezicApp(
                     }
                 )
             }
+
+            composable(Screen.ImportSoundCloud.route) {
+                ImportSoundCloudScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPlaylist = { playlistId ->
+                        navController.navigate(Screen.Playlist.createRoute(playlistId)) {
+                            popUpTo(Screen.Library.route)
+                        }
+                    }
+                )
+            }
             
             composable(Screen.Settings.route) {
                 com.quezic.ui.screens.settings.SettingsScreen(
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+        }
+
+            // Ambient visualizer overlay - subtle bass/treble glow on top of content
+            if (playerState.isPlaying && fftData.isNotEmpty()) {
+                AmbientVisualizer(
+                    fftData = fftData,
+                    isPlaying = playerState.isPlaying,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }

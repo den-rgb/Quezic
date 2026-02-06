@@ -27,23 +27,29 @@ public final class PlayerController_Factory implements Factory<PlayerController>
 
   private final Provider<MusicRepository> musicRepositoryProvider;
 
+  private final Provider<AudioVisualizerHelper> visualizerHelperProvider;
+
   public PlayerController_Factory(Provider<Context> contextProvider,
-      Provider<MusicRepository> musicRepositoryProvider) {
+      Provider<MusicRepository> musicRepositoryProvider,
+      Provider<AudioVisualizerHelper> visualizerHelperProvider) {
     this.contextProvider = contextProvider;
     this.musicRepositoryProvider = musicRepositoryProvider;
+    this.visualizerHelperProvider = visualizerHelperProvider;
   }
 
   @Override
   public PlayerController get() {
-    return newInstance(contextProvider.get(), musicRepositoryProvider.get());
+    return newInstance(contextProvider.get(), musicRepositoryProvider.get(), visualizerHelperProvider.get());
   }
 
   public static PlayerController_Factory create(Provider<Context> contextProvider,
-      Provider<MusicRepository> musicRepositoryProvider) {
-    return new PlayerController_Factory(contextProvider, musicRepositoryProvider);
+      Provider<MusicRepository> musicRepositoryProvider,
+      Provider<AudioVisualizerHelper> visualizerHelperProvider) {
+    return new PlayerController_Factory(contextProvider, musicRepositoryProvider, visualizerHelperProvider);
   }
 
-  public static PlayerController newInstance(Context context, MusicRepository musicRepository) {
-    return new PlayerController(context, musicRepository);
+  public static PlayerController newInstance(Context context, MusicRepository musicRepository,
+      AudioVisualizerHelper visualizerHelper) {
+    return new PlayerController(context, musicRepository, visualizerHelper);
   }
 }

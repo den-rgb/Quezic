@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.quezic.domain.model.RepeatMode
 import com.quezic.domain.model.Song
+import com.quezic.ui.components.FullVisualizer
 import com.quezic.ui.theme.*
 import com.quezic.ui.theme.AccentGreen
 import com.quezic.ui.theme.AccentPurple
@@ -47,6 +48,7 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val fftData by viewModel.fftData.collectAsStateWithLifecycle()
     val song = playerState.currentSong
     val context = LocalContext.current
     
@@ -147,7 +149,7 @@ fun PlayerScreen(
                 }
             }
 
-            // Album Art - constrained size to prevent overlap
+            // Album Art with Visualizer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -155,6 +157,15 @@ fun PlayerScreen(
                     .padding(horizontal = 28.dp),
                 contentAlignment = Alignment.Center
             ) {
+                // Radial visualizer behind album art
+                if (playerState.isPlaying && fftData.isNotEmpty()) {
+                    FullVisualizer(
+                        fftData = fftData,
+                        isPlaying = playerState.isPlaying,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.85f)

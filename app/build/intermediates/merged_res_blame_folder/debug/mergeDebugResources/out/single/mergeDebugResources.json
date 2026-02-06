@@ -1,7 +1,19 @@
 [
     {
-        "merged": "com.quezic.app-debug-73:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
-        "source": "com.quezic.app-main-75:/mipmap-anydpi-v26/ic_launcher_round.xml"
+        "merged": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-debug-73:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-main-75:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-debug-73:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-main-75:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-debug-73:/drawable_ic_launcher_background.xml.flat",
+        "source": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-main-75:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-debug-73:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "/Users/dmoskale/.gradle/daemon/8.13/com.quezic.app-main-75:/drawable/ic_launcher_foreground.xml"
     },
     {
         "merged": "com.quezic.app-debug-73:/drawable_ic_launcher_foreground.xml.flat",
@@ -10,9 +22,5 @@
     {
         "merged": "com.quezic.app-debug-73:/drawable_ic_launcher_background.xml.flat",
         "source": "com.quezic.app-main-75:/drawable/ic_launcher_background.xml"
-    },
-    {
-        "merged": "com.quezic.app-debug-73:/mipmap-anydpi-v26_ic_launcher.xml.flat",
-        "source": "com.quezic.app-main-75:/mipmap-anydpi-v26/ic_launcher.xml"
     }
 ]

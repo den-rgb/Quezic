@@ -36,6 +36,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToPlaylist: (Long) -> Unit,
     onPlaySong: (Song) -> Unit,
+    onPlaySongInContext: (List<Song>, Int) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -71,9 +72,10 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(uiState.recentlyPlayed) { song ->
+                        val index = uiState.recentlyPlayed.indexOf(song)
                         LargeSongCard(
                             song = song,
-                            onClick = { onPlaySong(song) }
+                            onClick = { onPlaySongInContext(uiState.recentlyPlayed, index) }
                         )
                     }
                 }
@@ -107,10 +109,12 @@ fun HomeScreen(
             item {
                 SectionHeader(title = "Top Tracks")
             }
-            items(uiState.mostPlayed.take(5)) { song ->
+            val topTracks = uiState.mostPlayed.take(5)
+            items(topTracks) { song ->
+                val index = topTracks.indexOf(song)
                 CompactSongRow(
                     song = song,
-                    onClick = { onPlaySong(song) },
+                    onClick = { onPlaySongInContext(topTracks, index) },
                     showPlayCount = true
                 )
             }
@@ -127,9 +131,10 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(uiState.recentlyAdded) { song ->
+                        val index = uiState.recentlyAdded.indexOf(song)
                         LargeSongCard(
                             song = song,
-                            onClick = { onPlaySong(song) }
+                            onClick = { onPlaySongInContext(uiState.recentlyAdded, index) }
                         )
                     }
                 }

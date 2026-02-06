@@ -40,7 +40,7 @@ fun PlaylistScreen(
     onNavigateBack: () -> Unit,
     onPlaySong: (Song) -> Unit,
     onAddToQueue: (Song) -> Unit,
-    onPlayAll: (List<Song>) -> Unit,
+    onPlayAll: (List<Song>, Int) -> Unit,
     viewModel: PlaylistViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -106,8 +106,8 @@ fun PlaylistScreen(
                             coverUrl = playlist.coverUrl,
                             notDownloadedCount = viewModel.getNotDownloadedCount(),
                             downloadProgress = uiState.downloadProgress,
-                            onPlayAll = { if (songs.isNotEmpty()) onPlayAll(songs) },
-                            onShuffle = { if (songs.isNotEmpty()) onPlayAll(songs.shuffled()) },
+                            onPlayAll = { if (songs.isNotEmpty()) onPlayAll(songs, 0) },
+                            onShuffle = { if (songs.isNotEmpty()) onPlayAll(songs.shuffled(), 0) },
                             onDownloadAll = { viewModel.downloadAllSongs() }
                         )
                         
@@ -210,7 +210,7 @@ fun PlaylistScreen(
                             allPlaylists = uiState.allPlaylists,
                             currentPlaylistId = playlistId,
                             downloadState = uiState.songDownloadStates[song.id],
-                            onClick = { onPlaySong(song) },
+                            onClick = { onPlayAll(songs, songs.indexOf(song).coerceAtLeast(0)) },
                             onAddToQueue = { onAddToQueue(song) },
                             onToggleFavorite = { viewModel.toggleFavorite(song) },
                             onAddToPlaylist = { targetPlaylistId -> 
@@ -273,10 +273,12 @@ fun PlaylistScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
+                    val suggestionSongs = uiState.suggestions.map { it.toSong() }
                     items(uiState.suggestions) { suggestion ->
+                        val index = uiState.suggestions.indexOf(suggestion)
                         SuggestionItem(
                             result = suggestion,
-                            onPlay = { onPlaySong(suggestion.toSong()) },
+                            onPlay = { onPlayAll(suggestionSongs, index) },
                             onAdd = { viewModel.addSuggestionToPlaylist(suggestion) }
                         )
                     }

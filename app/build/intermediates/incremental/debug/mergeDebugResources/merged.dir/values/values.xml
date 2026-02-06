@@ -84,11 +84,11 @@
     <bool name="workmanager_test_configuration">false</bool>
     <color name="androidx_core_ripple_material_light">#1f000000</color>
     <color name="androidx_core_secondary_text_default_material_light">#8a000000</color>
-    <color name="background">#FFFBFF</color>
-    <color name="background_dark">#201A19</color>
+    <color name="background">#0D0D0D</color>
+    <color name="background_dark">#0D0D0D</color>
     <color name="call_notification_answer_color">#1d873b</color>
     <color name="call_notification_decline_color">#d93025</color>
-    <color name="error">#BA1A1A</color>
+    <color name="error">#CF6679</color>
     <color name="exo_black_opacity_60">#98000000</color>
     <color name="exo_black_opacity_70">#B3000000</color>
     <color name="exo_bottom_bar_background">#b0000000</color>
@@ -100,31 +100,36 @@
     <color name="notification_action_color_filter">#ffffffff</color>
     <color name="notification_icon_bg_color">#ff9e9e9e</color>
     <color name="notification_material_background_media_default_color">#ff424242</color>
-    <color name="on_background">#201A19</color>
-    <color name="on_background_dark">#ECE0DE</color>
-    <color name="on_error">#FFFFFF</color>
-    <color name="on_primary">#FFFFFF</color>
-    <color name="on_primary_container">#2D0A00</color>
-    <color name="on_primary_container_dark">#FFD4C4</color>
-    <color name="on_primary_dark">#561E00</color>
-    <color name="on_secondary">#FFFFFF</color>
-    <color name="on_secondary_container">#2C1512</color>
-    <color name="on_surface">#201A19</color>
-    <color name="on_surface_dark">#ECE0DE</color>
-    <color name="on_tertiary">#FFFFFF</color>
-    <color name="on_tertiary_container">#231C03</color>
-    <color name="primary">#FF6B35</color>
-    <color name="primary_container">#FFD4C4</color>
-    <color name="primary_container_dark">#7A2E00</color>
-    <color name="primary_dark">#FFB599</color>
+    <color name="on_background">#E6E1E5</color>
+    <color name="on_background_dark">#E6E1E5</color>
+    <color name="on_error">#000000</color>
+    <color name="on_primary">#003919</color>
+    <color name="on_primary_container">#69F0AE</color>
+    <color name="on_primary_container_dark">#69F0AE</color>
+    <color name="on_primary_dark">#003919</color>
+    <color name="on_secondary">#1F0047</color>
+    <color name="on_secondary_container">#E7DAFF</color>
+    <color name="on_surface">#E6E1E5</color>
+    <color name="on_surface_dark">#E6E1E5</color>
+    <color name="on_tertiary">#00332C</color>
+    <color name="on_tertiary_container">#70F7E9</color>
+    <color name="primary">#00E676</color>
+    <color name="primary_container">#00522A</color>
+    <color name="primary_container_dark">#00522A</color>
+    <color name="primary_dark">#00E676</color>
     <color name="primary_text_default_material_dark">#ffffffff</color>
-    <color name="secondary">#7B5E57</color>
-    <color name="secondary_container">#FFD9D2</color>
+    <color name="quezic_black">#0D0D0D</color>
+    <color name="quezic_green">#00E676</color>
+    <color name="quezic_green_light">#69F0AE</color>
+    <color name="quezic_purple">#BB86FC</color>
+    <color name="quezic_purple_dark">#2D1B4E</color>
+    <color name="secondary">#BB86FC</color>
+    <color name="secondary_container">#2D1B4E</color>
     <color name="secondary_text_default_material_dark">#b3ffffff</color>
-    <color name="surface">#FFFBFF</color>
-    <color name="surface_dark">#201A19</color>
-    <color name="tertiary">#6A5F3C</color>
-    <color name="tertiary_container">#F3E3B6</color>
+    <color name="surface">#121212</color>
+    <color name="surface_dark">#121212</color>
+    <color name="tertiary">#03DAC6</color>
+    <color name="tertiary_container">#004D43</color>
     <dimen name="compat_button_inset_horizontal_material">4dp</dimen>
     <dimen name="compat_button_inset_vertical_material">6dp</dimen>
     <dimen name="compat_button_padding_horizontal_material">8dp</dimen>
@@ -840,23 +845,14 @@
         <attr format="reference" name="fontProviderCerts"/>
         
         <attr name="fontProviderFetchStrategy">
-            <!-- The blocking font fetch works as follows.
-              First, check the local cache, then if the requested font is not cached, request the
-              font from the provider and wait until it is finished.  You can change the length of
-              the timeout by modifying fontProviderFetchTimeout.  If the timeout happens, the
-              default typeface will be used instead. -->
+            
             <enum name="blocking" value="0"/>
-            <!-- The async font fetch works as follows.
-              First, check the local cache, then if the requeted font is not cached, trigger a
-              request the font and continue with layout inflation. Once the font fetch succeeds, the
-              target text view will be refreshed with the downloaded font data. The
-              fontProviderFetchTimeout will be ignored if async loading is specified. -->
+            
             <enum name="async" value="1"/>
         </attr>
         
         <attr format="integer" name="fontProviderFetchTimeout">
-            <!-- A special value for the timeout. In this case, the blocking font fetching will not
-              timeout and wait until a reply is received from the font provider. -->
+            
             <enum name="forever" value="-1"/>
         </attr>
         

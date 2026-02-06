@@ -28,23 +28,27 @@ public final class DownloadWorker_Factory {
 
   private final Provider<SongDao> songDaoProvider;
 
+  private final Provider<DownloadManager> downloadManagerProvider;
+
   public DownloadWorker_Factory(Provider<MusicExtractorService> extractorServiceProvider,
-      Provider<SongDao> songDaoProvider) {
+      Provider<SongDao> songDaoProvider, Provider<DownloadManager> downloadManagerProvider) {
     this.extractorServiceProvider = extractorServiceProvider;
     this.songDaoProvider = songDaoProvider;
+    this.downloadManagerProvider = downloadManagerProvider;
   }
 
   public DownloadWorker get(Context context, WorkerParameters params) {
-    return newInstance(context, params, extractorServiceProvider.get(), songDaoProvider.get());
+    return newInstance(context, params, extractorServiceProvider.get(), songDaoProvider.get(), downloadManagerProvider.get());
   }
 
   public static DownloadWorker_Factory create(
-      Provider<MusicExtractorService> extractorServiceProvider, Provider<SongDao> songDaoProvider) {
-    return new DownloadWorker_Factory(extractorServiceProvider, songDaoProvider);
+      Provider<MusicExtractorService> extractorServiceProvider, Provider<SongDao> songDaoProvider,
+      Provider<DownloadManager> downloadManagerProvider) {
+    return new DownloadWorker_Factory(extractorServiceProvider, songDaoProvider, downloadManagerProvider);
   }
 
   public static DownloadWorker newInstance(Context context, WorkerParameters params,
-      MusicExtractorService extractorService, SongDao songDao) {
-    return new DownloadWorker(context, params, extractorService, songDao);
+      MusicExtractorService extractorService, SongDao songDao, DownloadManager downloadManager) {
+    return new DownloadWorker(context, params, extractorService, songDao, downloadManager);
   }
 }

@@ -1,5 +1,6 @@
 package com.quezic.di;
 
+import com.quezic.data.remote.LastFmService;
 import com.quezic.data.remote.MusicExtractorService;
 import com.quezic.domain.recommendation.RecommendationEngine;
 import dagger.internal.DaggerGenerated;
@@ -26,23 +27,28 @@ import javax.inject.Provider;
 public final class RecommendationModule_ProvideRecommendationEngineFactory implements Factory<RecommendationEngine> {
   private final Provider<MusicExtractorService> extractorServiceProvider;
 
+  private final Provider<LastFmService> lastFmServiceProvider;
+
   public RecommendationModule_ProvideRecommendationEngineFactory(
-      Provider<MusicExtractorService> extractorServiceProvider) {
+      Provider<MusicExtractorService> extractorServiceProvider,
+      Provider<LastFmService> lastFmServiceProvider) {
     this.extractorServiceProvider = extractorServiceProvider;
+    this.lastFmServiceProvider = lastFmServiceProvider;
   }
 
   @Override
   public RecommendationEngine get() {
-    return provideRecommendationEngine(extractorServiceProvider.get());
+    return provideRecommendationEngine(extractorServiceProvider.get(), lastFmServiceProvider.get());
   }
 
   public static RecommendationModule_ProvideRecommendationEngineFactory create(
-      Provider<MusicExtractorService> extractorServiceProvider) {
-    return new RecommendationModule_ProvideRecommendationEngineFactory(extractorServiceProvider);
+      Provider<MusicExtractorService> extractorServiceProvider,
+      Provider<LastFmService> lastFmServiceProvider) {
+    return new RecommendationModule_ProvideRecommendationEngineFactory(extractorServiceProvider, lastFmServiceProvider);
   }
 
   public static RecommendationEngine provideRecommendationEngine(
-      MusicExtractorService extractorService) {
-    return Preconditions.checkNotNullFromProvides(RecommendationModule.INSTANCE.provideRecommendationEngine(extractorService));
+      MusicExtractorService extractorService, LastFmService lastFmService) {
+    return Preconditions.checkNotNullFromProvides(RecommendationModule.INSTANCE.provideRecommendationEngine(extractorService, lastFmService));
   }
 }

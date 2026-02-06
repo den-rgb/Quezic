@@ -40,8 +40,10 @@ fun LibraryScreen(
     onNavigateToArtist: (String) -> Unit,
     onNavigateToAlbum: (String) -> Unit,
     onNavigateToImportSpotify: () -> Unit,
+    onNavigateToImportSoundCloud: () -> Unit = {},
     onNavigateToSettings: () -> Unit,
     onPlaySong: (Song) -> Unit,
+    onPlaySongInContext: (List<Song>, Int) -> Unit,
     onAddToQueue: (Song) -> Unit,
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
@@ -140,7 +142,7 @@ fun LibraryScreen(
             0 -> SongsTab(
                 songs = uiState.songs,
                 playlists = uiState.playlists,
-                onPlaySong = onPlaySong,
+                onPlaySongInContext = onPlaySongInContext,
                 onAddToQueue = onAddToQueue,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddToPlaylist = viewModel::addSongToPlaylist,
@@ -160,7 +162,8 @@ fun LibraryScreen(
                 playlists = uiState.playlists,
                 onPlaylistClick = onNavigateToPlaylist,
                 onCreatePlaylist = { viewModel.showCreatePlaylistDialog() },
-                onImportSpotify = onNavigateToImportSpotify
+                onImportSpotify = onNavigateToImportSpotify,
+                onImportSoundCloud = onNavigateToImportSoundCloud
             )
         }
     }
@@ -180,7 +183,7 @@ fun LibraryScreen(
 private fun SongsTab(
     songs: List<Song>,
     playlists: List<Playlist>,
-    onPlaySong: (Song) -> Unit,
+    onPlaySongInContext: (List<Song>, Int) -> Unit,
     onAddToQueue: (Song) -> Unit,
     onToggleFavorite: (Song) -> Unit,
     onAddToPlaylist: (Song, Long) -> Unit,
@@ -214,7 +217,7 @@ private fun SongsTab(
                 SongItem(
                     song = song,
                     playlists = playlists,
-                    onClick = { onPlaySong(song) },
+                    onClick = { onPlaySongInContext(songs, songs.indexOf(song).coerceAtLeast(0)) },
                     onAddToQueue = { onAddToQueue(song) },
                     onToggleFavorite = { onToggleFavorite(song) },
                     onAddToPlaylist = { playlistId -> onAddToPlaylist(song, playlistId) },
@@ -613,7 +616,8 @@ private fun PlaylistsTab(
     playlists: List<Playlist>,
     onPlaylistClick: (Long) -> Unit,
     onCreatePlaylist: () -> Unit,
-    onImportSpotify: () -> Unit
+    onImportSpotify: () -> Unit,
+    onImportSoundCloud: () -> Unit
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
@@ -694,6 +698,51 @@ private fun PlaylistsTab(
                         )
                         Text(
                             text = "Transfer your Spotify playlists",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray1
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            // Import from SoundCloud card
+            Surface(
+                onClick = onImportSoundCloud,
+                shape = RoundedCornerShape(12.dp),
+                color = Gray6
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFF5500)), // SoundCloud orange
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Download,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "Import from SoundCloud",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Transfer your SoundCloud playlists",
                             style = MaterialTheme.typography.bodySmall,
                             color = Gray1
                         )

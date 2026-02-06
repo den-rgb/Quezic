@@ -19,8 +19,10 @@ import com.quezic.data.local.QuezicDatabase;
 import com.quezic.data.local.dao.PlaylistDao;
 import com.quezic.data.local.dao.SongDao;
 import com.quezic.data.remote.InvidiousApiService;
+import com.quezic.data.remote.LastFmService;
 import com.quezic.data.remote.MusicExtractorService;
 import com.quezic.data.remote.PipedApiService;
+import com.quezic.data.remote.SoundCloudApiService;
 import com.quezic.data.remote.SpotifyApiService;
 import com.quezic.di.AppModule_ProvideInvidiousApiServiceFactory;
 import com.quezic.di.AppModule_ProvideMusicExtractorServiceFactory;
@@ -35,6 +37,7 @@ import com.quezic.di.DatabaseModule_ProvidePlaylistDaoFactory;
 import com.quezic.di.DatabaseModule_ProvideSongDaoFactory;
 import com.quezic.di.DownloadModule_ProvideDownloadManagerFactory;
 import com.quezic.di.PlayerModule_ProvidePlayerControllerFactory;
+import com.quezic.di.RecommendationModule_ProvideLastFmServiceFactory;
 import com.quezic.di.RecommendationModule_ProvideRecommendationEngineFactory;
 import com.quezic.domain.recommendation.RecommendationEngine;
 import com.quezic.domain.repository.MusicRepository;
@@ -44,7 +47,9 @@ import com.quezic.download.DownloadManager;
 import com.quezic.download.DownloadService;
 import com.quezic.download.DownloadWorker;
 import com.quezic.download.DownloadWorker_AssistedFactory;
+import com.quezic.player.AudioVisualizerHelper;
 import com.quezic.player.PlaybackService;
+import com.quezic.player.PlaybackService_MembersInjector;
 import com.quezic.player.PlayerController;
 import com.quezic.ui.screens.home.HomeViewModel;
 import com.quezic.ui.screens.home.HomeViewModel_HiltModules_KeyModule_ProvideFactory;
@@ -56,6 +61,8 @@ import com.quezic.ui.screens.search.SearchViewModel;
 import com.quezic.ui.screens.search.SearchViewModel_HiltModules_KeyModule_ProvideFactory;
 import com.quezic.ui.screens.settings.SettingsViewModel;
 import com.quezic.ui.screens.settings.SettingsViewModel_HiltModules_KeyModule_ProvideFactory;
+import com.quezic.ui.screens.soundcloud.ImportSoundCloudViewModel;
+import com.quezic.ui.screens.soundcloud.ImportSoundCloudViewModel_HiltModules_KeyModule_ProvideFactory;
 import com.quezic.ui.screens.spotify.ImportSpotifyViewModel;
 import com.quezic.ui.screens.spotify.ImportSpotifyViewModel_HiltModules_KeyModule_ProvideFactory;
 import com.quezic.ui.viewmodel.PlayerViewModel;
@@ -415,7 +422,7 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
 
     @Override
     public Set<String> getViewModelKeys() {
-      return ImmutableSet.<String>of(HomeViewModel_HiltModules_KeyModule_ProvideFactory.provide(), ImportSpotifyViewModel_HiltModules_KeyModule_ProvideFactory.provide(), LibraryViewModel_HiltModules_KeyModule_ProvideFactory.provide(), PlayerViewModel_HiltModules_KeyModule_ProvideFactory.provide(), PlaylistViewModel_HiltModules_KeyModule_ProvideFactory.provide(), SearchViewModel_HiltModules_KeyModule_ProvideFactory.provide(), SettingsViewModel_HiltModules_KeyModule_ProvideFactory.provide());
+      return ImmutableSet.<String>of(HomeViewModel_HiltModules_KeyModule_ProvideFactory.provide(), ImportSoundCloudViewModel_HiltModules_KeyModule_ProvideFactory.provide(), ImportSpotifyViewModel_HiltModules_KeyModule_ProvideFactory.provide(), LibraryViewModel_HiltModules_KeyModule_ProvideFactory.provide(), PlayerViewModel_HiltModules_KeyModule_ProvideFactory.provide(), PlaylistViewModel_HiltModules_KeyModule_ProvideFactory.provide(), SearchViewModel_HiltModules_KeyModule_ProvideFactory.provide(), SettingsViewModel_HiltModules_KeyModule_ProvideFactory.provide());
     }
 
     @Override
@@ -443,6 +450,8 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
 
     private Provider<HomeViewModel> homeViewModelProvider;
 
+    private Provider<ImportSoundCloudViewModel> importSoundCloudViewModelProvider;
+
     private Provider<ImportSpotifyViewModel> importSpotifyViewModelProvider;
 
     private Provider<LibraryViewModel> libraryViewModelProvider;
@@ -469,17 +478,18 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
     private void initialize(final SavedStateHandle savedStateHandleParam,
         final ViewModelLifecycle viewModelLifecycleParam) {
       this.homeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
-      this.importSpotifyViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
-      this.libraryViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
-      this.playerViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
-      this.playlistViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
-      this.searchViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 5);
-      this.settingsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 6);
+      this.importSoundCloudViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
+      this.importSpotifyViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.libraryViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.playerViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
+      this.playlistViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 5);
+      this.searchViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 6);
+      this.settingsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 7);
     }
 
     @Override
     public Map<String, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return ImmutableMap.<String, javax.inject.Provider<ViewModel>>builderWithExpectedSize(7).put("com.quezic.ui.screens.home.HomeViewModel", ((Provider) homeViewModelProvider)).put("com.quezic.ui.screens.spotify.ImportSpotifyViewModel", ((Provider) importSpotifyViewModelProvider)).put("com.quezic.ui.screens.library.LibraryViewModel", ((Provider) libraryViewModelProvider)).put("com.quezic.ui.viewmodel.PlayerViewModel", ((Provider) playerViewModelProvider)).put("com.quezic.ui.screens.playlist.PlaylistViewModel", ((Provider) playlistViewModelProvider)).put("com.quezic.ui.screens.search.SearchViewModel", ((Provider) searchViewModelProvider)).put("com.quezic.ui.screens.settings.SettingsViewModel", ((Provider) settingsViewModelProvider)).build();
+      return ImmutableMap.<String, javax.inject.Provider<ViewModel>>builderWithExpectedSize(8).put("com.quezic.ui.screens.home.HomeViewModel", ((Provider) homeViewModelProvider)).put("com.quezic.ui.screens.soundcloud.ImportSoundCloudViewModel", ((Provider) importSoundCloudViewModelProvider)).put("com.quezic.ui.screens.spotify.ImportSpotifyViewModel", ((Provider) importSpotifyViewModelProvider)).put("com.quezic.ui.screens.library.LibraryViewModel", ((Provider) libraryViewModelProvider)).put("com.quezic.ui.viewmodel.PlayerViewModel", ((Provider) playerViewModelProvider)).put("com.quezic.ui.screens.playlist.PlaylistViewModel", ((Provider) playlistViewModelProvider)).put("com.quezic.ui.screens.search.SearchViewModel", ((Provider) searchViewModelProvider)).put("com.quezic.ui.screens.settings.SettingsViewModel", ((Provider) settingsViewModelProvider)).build();
     }
 
     @Override
@@ -511,22 +521,25 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
           case 0: // com.quezic.ui.screens.home.HomeViewModel 
           return (T) new HomeViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.providePlayerControllerProvider.get());
 
-          case 1: // com.quezic.ui.screens.spotify.ImportSpotifyViewModel 
+          case 1: // com.quezic.ui.screens.soundcloud.ImportSoundCloudViewModel 
+          return (T) new ImportSoundCloudViewModel(singletonCImpl.soundCloudApiServiceProvider.get(), singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get());
+
+          case 2: // com.quezic.ui.screens.spotify.ImportSpotifyViewModel 
           return (T) new ImportSpotifyViewModel(singletonCImpl.provideSpotifyApiServiceProvider.get(), singletonCImpl.provideSongMatcherServiceProvider.get(), singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get());
 
-          case 2: // com.quezic.ui.screens.library.LibraryViewModel 
+          case 3: // com.quezic.ui.screens.library.LibraryViewModel 
           return (T) new LibraryViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.provideDownloadManagerProvider.get());
 
-          case 3: // com.quezic.ui.viewmodel.PlayerViewModel 
+          case 4: // com.quezic.ui.viewmodel.PlayerViewModel 
           return (T) new PlayerViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.providePlayerControllerProvider.get());
 
-          case 4: // com.quezic.ui.screens.playlist.PlaylistViewModel 
+          case 5: // com.quezic.ui.screens.playlist.PlaylistViewModel 
           return (T) new PlaylistViewModel(singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.provideRecommendationEngineProvider.get(), singletonCImpl.provideDownloadManagerProvider.get());
 
-          case 5: // com.quezic.ui.screens.search.SearchViewModel 
+          case 6: // com.quezic.ui.screens.search.SearchViewModel 
           return (T) new SearchViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get());
 
-          case 6: // com.quezic.ui.screens.settings.SettingsViewModel 
+          case 7: // com.quezic.ui.screens.settings.SettingsViewModel 
           return (T) new SettingsViewModel(singletonCImpl.provideProxySettingsProvider.get());
 
           default: throw new AssertionError(id);
@@ -609,6 +622,12 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
 
     @Override
     public void injectPlaybackService(PlaybackService playbackService) {
+      injectPlaybackService2(playbackService);
+    }
+
+    private PlaybackService injectPlaybackService2(PlaybackService instance) {
+      PlaybackService_MembersInjector.injectPlayerController(instance, singletonCImpl.providePlayerControllerProvider.get());
+      return instance;
     }
   }
 
@@ -629,6 +648,8 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
 
     private Provider<SongDao> provideSongDaoProvider;
 
+    private Provider<DownloadManager> provideDownloadManagerProvider;
+
     private Provider<DownloadWorker_AssistedFactory> downloadWorker_AssistedFactoryProvider;
 
     private Provider<MusicRepository> provideMusicRepositoryProvider;
@@ -637,13 +658,17 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
 
     private Provider<PlaylistRepository> providePlaylistRepositoryProvider;
 
+    private Provider<AudioVisualizerHelper> audioVisualizerHelperProvider;
+
     private Provider<PlayerController> providePlayerControllerProvider;
+
+    private Provider<SoundCloudApiService> soundCloudApiServiceProvider;
 
     private Provider<SpotifyApiService> provideSpotifyApiServiceProvider;
 
     private Provider<SongMatcherService> provideSongMatcherServiceProvider;
 
-    private Provider<DownloadManager> provideDownloadManagerProvider;
+    private Provider<LastFmService> provideLastFmServiceProvider;
 
     private Provider<RecommendationEngine> provideRecommendationEngineProvider;
 
@@ -670,15 +695,18 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
       this.provideMusicExtractorServiceProvider = DoubleCheck.provider(new SwitchingProvider<MusicExtractorService>(singletonCImpl, 1));
       this.provideDatabaseProvider = DoubleCheck.provider(new SwitchingProvider<QuezicDatabase>(singletonCImpl, 6));
       this.provideSongDaoProvider = DoubleCheck.provider(new SwitchingProvider<SongDao>(singletonCImpl, 5));
+      this.provideDownloadManagerProvider = DoubleCheck.provider(new SwitchingProvider<DownloadManager>(singletonCImpl, 7));
       this.downloadWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<DownloadWorker_AssistedFactory>(singletonCImpl, 0));
-      this.provideMusicRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<MusicRepository>(singletonCImpl, 7));
-      this.providePlaylistDaoProvider = DoubleCheck.provider(new SwitchingProvider<PlaylistDao>(singletonCImpl, 9));
-      this.providePlaylistRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<PlaylistRepository>(singletonCImpl, 8));
-      this.providePlayerControllerProvider = DoubleCheck.provider(new SwitchingProvider<PlayerController>(singletonCImpl, 10));
-      this.provideSpotifyApiServiceProvider = DoubleCheck.provider(new SwitchingProvider<SpotifyApiService>(singletonCImpl, 11));
-      this.provideSongMatcherServiceProvider = DoubleCheck.provider(new SwitchingProvider<SongMatcherService>(singletonCImpl, 12));
-      this.provideDownloadManagerProvider = DoubleCheck.provider(new SwitchingProvider<DownloadManager>(singletonCImpl, 13));
-      this.provideRecommendationEngineProvider = DoubleCheck.provider(new SwitchingProvider<RecommendationEngine>(singletonCImpl, 14));
+      this.provideMusicRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<MusicRepository>(singletonCImpl, 8));
+      this.providePlaylistDaoProvider = DoubleCheck.provider(new SwitchingProvider<PlaylistDao>(singletonCImpl, 10));
+      this.providePlaylistRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<PlaylistRepository>(singletonCImpl, 9));
+      this.audioVisualizerHelperProvider = DoubleCheck.provider(new SwitchingProvider<AudioVisualizerHelper>(singletonCImpl, 12));
+      this.providePlayerControllerProvider = DoubleCheck.provider(new SwitchingProvider<PlayerController>(singletonCImpl, 11));
+      this.soundCloudApiServiceProvider = DoubleCheck.provider(new SwitchingProvider<SoundCloudApiService>(singletonCImpl, 13));
+      this.provideSpotifyApiServiceProvider = DoubleCheck.provider(new SwitchingProvider<SpotifyApiService>(singletonCImpl, 14));
+      this.provideSongMatcherServiceProvider = DoubleCheck.provider(new SwitchingProvider<SongMatcherService>(singletonCImpl, 15));
+      this.provideLastFmServiceProvider = DoubleCheck.provider(new SwitchingProvider<LastFmService>(singletonCImpl, 17));
+      this.provideRecommendationEngineProvider = DoubleCheck.provider(new SwitchingProvider<RecommendationEngine>(singletonCImpl, 16));
     }
 
     @Override
@@ -724,7 +752,7 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
           return (T) new DownloadWorker_AssistedFactory() {
             @Override
             public DownloadWorker create(Context context, WorkerParameters params) {
-              return new DownloadWorker(context, params, singletonCImpl.provideMusicExtractorServiceProvider.get(), singletonCImpl.provideSongDaoProvider.get());
+              return new DownloadWorker(context, params, singletonCImpl.provideMusicExtractorServiceProvider.get(), singletonCImpl.provideSongDaoProvider.get(), singletonCImpl.provideDownloadManagerProvider.get());
             }
           };
 
@@ -746,29 +774,38 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
           case 6: // com.quezic.data.local.QuezicDatabase 
           return (T) DatabaseModule_ProvideDatabaseFactory.provideDatabase(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 7: // com.quezic.domain.repository.MusicRepository 
-          return (T) AppModule_ProvideMusicRepositoryFactory.provideMusicRepository(singletonCImpl.provideSongDaoProvider.get(), singletonCImpl.provideMusicExtractorServiceProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
-
-          case 8: // com.quezic.domain.repository.PlaylistRepository 
-          return (T) AppModule_ProvidePlaylistRepositoryFactory.providePlaylistRepository(singletonCImpl.providePlaylistDaoProvider.get(), singletonCImpl.provideSongDaoProvider.get());
-
-          case 9: // com.quezic.data.local.dao.PlaylistDao 
-          return (T) DatabaseModule_ProvidePlaylistDaoFactory.providePlaylistDao(singletonCImpl.provideDatabaseProvider.get());
-
-          case 10: // com.quezic.player.PlayerController 
-          return (T) PlayerModule_ProvidePlayerControllerFactory.providePlayerController(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideMusicRepositoryProvider.get());
-
-          case 11: // com.quezic.data.remote.SpotifyApiService 
-          return (T) AppModule_ProvideSpotifyApiServiceFactory.provideSpotifyApiService();
-
-          case 12: // com.quezic.domain.service.SongMatcherService 
-          return (T) AppModule_ProvideSongMatcherServiceFactory.provideSongMatcherService(singletonCImpl.provideMusicExtractorServiceProvider.get());
-
-          case 13: // com.quezic.download.DownloadManager 
+          case 7: // com.quezic.download.DownloadManager 
           return (T) DownloadModule_ProvideDownloadManagerFactory.provideDownloadManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 14: // com.quezic.domain.recommendation.RecommendationEngine 
-          return (T) RecommendationModule_ProvideRecommendationEngineFactory.provideRecommendationEngine(singletonCImpl.provideMusicExtractorServiceProvider.get());
+          case 8: // com.quezic.domain.repository.MusicRepository 
+          return (T) AppModule_ProvideMusicRepositoryFactory.provideMusicRepository(singletonCImpl.provideSongDaoProvider.get(), singletonCImpl.provideMusicExtractorServiceProvider.get(), ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 9: // com.quezic.domain.repository.PlaylistRepository 
+          return (T) AppModule_ProvidePlaylistRepositoryFactory.providePlaylistRepository(singletonCImpl.providePlaylistDaoProvider.get(), singletonCImpl.provideSongDaoProvider.get());
+
+          case 10: // com.quezic.data.local.dao.PlaylistDao 
+          return (T) DatabaseModule_ProvidePlaylistDaoFactory.providePlaylistDao(singletonCImpl.provideDatabaseProvider.get());
+
+          case 11: // com.quezic.player.PlayerController 
+          return (T) PlayerModule_ProvidePlayerControllerFactory.providePlayerController(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.audioVisualizerHelperProvider.get());
+
+          case 12: // com.quezic.player.AudioVisualizerHelper 
+          return (T) new AudioVisualizerHelper(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 13: // com.quezic.data.remote.SoundCloudApiService 
+          return (T) new SoundCloudApiService();
+
+          case 14: // com.quezic.data.remote.SpotifyApiService 
+          return (T) AppModule_ProvideSpotifyApiServiceFactory.provideSpotifyApiService();
+
+          case 15: // com.quezic.domain.service.SongMatcherService 
+          return (T) AppModule_ProvideSongMatcherServiceFactory.provideSongMatcherService(singletonCImpl.provideMusicExtractorServiceProvider.get());
+
+          case 16: // com.quezic.domain.recommendation.RecommendationEngine 
+          return (T) RecommendationModule_ProvideRecommendationEngineFactory.provideRecommendationEngine(singletonCImpl.provideMusicExtractorServiceProvider.get(), singletonCImpl.provideLastFmServiceProvider.get());
+
+          case 17: // com.quezic.data.remote.LastFmService 
+          return (T) RecommendationModule_ProvideLastFmServiceFactory.provideLastFmService();
 
           default: throw new AssertionError(id);
         }

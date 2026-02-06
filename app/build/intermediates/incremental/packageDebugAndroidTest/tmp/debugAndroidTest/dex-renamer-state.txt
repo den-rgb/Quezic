@@ -1,0 +1,4 @@
+#Thu Feb 12 13:39:37 GMT 2026
+base.0=/Users/dmoskale/dev/Quezic/app/build/intermediates/dex/debugAndroidTest/mergeProjectDexDebugAndroidTest/0/classes.dex
+path.0=0/classes.dex
+renamed.0=classes.dex

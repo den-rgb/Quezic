@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Music note icon -->
+    <!-- Music note icon with green gradient -->
     <path
-        android:fillColor="#FFFFFF"
         android:pathData="M54,24
             L54,60
             C51.5,58.5 48.5,57.5 45,57.5
@@ -22,5 +22,16 @@
             C69.6,72 75,67.4 75,61.75
             L75,27
             L54,24
-            Z"/>
+            Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33"
+                android:startY="24"
+                android:endX="75"
+                android:endY="78"
+                android:startColor="#00E676"
+                android:endColor="#69F0AE"/>
+        </aapt:attr>
+    </path>
 </vector>

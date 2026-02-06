@@ -1,0 +1,5 @@
+com.quezic.test.app-androidTest-0 /Users/dmoskale/dev/Quezic/app/build/generated/res/resValues/androidTest/debug
+com.quezic.test.app-updated_navigation_xml-1 /Users/dmoskale/dev/Quezic/app/build/generated/updated_navigation_xml/debugAndroidTest
+com.quezic.test.app-mergeDebugAndroidTestResources-2 /Users/dmoskale/dev/Quezic/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/merged.dir
+com.quezic.test.app-mergeDebugAndroidTestResources-3 /Users/dmoskale/dev/Quezic/app/build/intermediates/incremental/debugAndroidTest/mergeDebugAndroidTestResources/stripped.dir
+com.quezic.test.app-debugAndroidTest-4 /Users/dmoskale/dev/Quezic/app/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources

@@ -1,12 +1,17 @@
 package com.quezic.player
 
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -14,6 +19,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
+import com.quezic.MainActivity
 import com.quezic.domain.model.PlayerState
 import com.quezic.domain.model.RepeatMode
 import com.quezic.domain.model.Song
@@ -29,13 +36,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PlayerController @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    val visualizerHelper: AudioVisualizerHelper
 ) {
     companion object {
         private const val TAG = "PlayerController"
@@ -47,6 +59,20 @@ class PlayerController @Inject constructor(
 
     private var exoPlayer: ExoPlayer? = null
     private var positionUpdateJob: kotlinx.coroutines.Job? = null
+
+    // MediaSession for system integration (lock screen, notification, bluetooth)
+    var mediaSession: MediaSession? = null
+        private set
+
+    // Audio session ID for the Visualizer API
+    val audioSessionId: Int
+        get() = exoPlayer?.audioSessionId ?: 0
+
+    // OkHttp client for artwork download (reused across calls)
+    private val artworkClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
 
     init {
         initializePlayer()
@@ -61,6 +87,14 @@ class PlayerController @Inject constructor(
         
         exoPlayer = ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .setUsage(C.USAGE_MEDIA)
+                    .build(),
+                true // Handle audio focus
+            )
+            .setHandleAudioBecomingNoisy(true) // Pause when headphones disconnected
             .build()
             .apply {
                 addListener(object : Player.Listener {
@@ -91,8 +125,13 @@ class PlayerController @Inject constructor(
                         _playerState.update { it.copy(isPlaying = isPlaying) }
                         if (isPlaying) {
                             startPositionUpdates()
+                            // Pass current audio session ID so the visualizer can
+                            // (re)initialize if it wasn't started yet or if the
+                            // session changed (common on Xiaomi/HyperOS)
+                            visualizerHelper.resume(exoPlayer?.audioSessionId ?: 0)
                         } else {
                             stopPositionUpdates()
+                            visualizerHelper.stop()
                         }
                     }
                     
@@ -142,6 +181,64 @@ class PlayerController @Inject constructor(
                     }
                 })
             }
+
+        // Create a ForwardingPlayer that bridges ExoPlayer with our custom queue
+        // This enables next/previous buttons on the notification and lock screen
+        val sessionPlayer = object : ForwardingPlayer(exoPlayer!!) {
+            override fun hasNextMediaItem(): Boolean = _playerState.value.hasNext
+            override fun hasPreviousMediaItem(): Boolean = true // Always allow previous (restart or go back)
+
+            override fun seekToNext() = playNext()
+            override fun seekToNextMediaItem() = playNext()
+            override fun seekToPrevious() = playPrevious()
+            override fun seekToPreviousMediaItem() = playPrevious()
+
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT)
+                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+            }
+        }
+
+        // Create MediaSession wrapping the forwarding player for system integration
+        val intent = Intent(context, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        mediaSession = MediaSession.Builder(context, sessionPlayer)
+            .setSessionActivity(pendingIntent)
+            .setCallback(object : MediaSession.Callback {
+                // Default callback handles play/pause/next/prev via the ForwardingPlayer.
+                // Explicit callback ensures system media buttons work on all OEMs.
+            })
+            .build()
+
+        // Start the audio visualizer if permission is granted
+        val sessionId = exoPlayer?.audioSessionId ?: 0
+        if (sessionId != 0) {
+            visualizerHelper.start(sessionId)
+        }
+    }
+
+    /**
+     * Start the PlaybackService as a foreground service so media notification appears.
+     */
+    private fun startPlaybackService() {
+        try {
+            val serviceIntent = Intent(context, PlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start PlaybackService: ${e.message}")
+        }
     }
 
     private fun startPositionUpdates() {
@@ -213,7 +310,7 @@ class PlayerController @Inject constructor(
             
             if (streamUrl == null) {
                 // Handle error - no stream URL available
-                val errorMessage = if (song.sourceType == com.quezic.domain.model.SourceType.YOUTUBE) {
+                val errorMessage = if (song.sourceType == SourceType.YOUTUBE) {
                     "YouTube playback unavailable. Try SoundCloud instead."
                 } else {
                     "Could not play: Unable to get audio stream"
@@ -229,24 +326,57 @@ class PlayerController @Inject constructor(
         }
 
         try {
-            // Create media item
+            // Load artwork bitmap for MIUI/Xiaomi lock screen compatibility
+            // Some devices can't resolve artwork URIs, so we set raw bytes directly
+            val artworkData = song.thumbnailUrl?.let { url ->
+                try {
+                    withContext(Dispatchers.IO) {
+                        val request = Request.Builder().url(url).build()
+                        artworkClient.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) response.body?.bytes() else null
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to load artwork bitmap: ${e.message}")
+                    null
+                }
+            }
+
+            // Create media item with both artwork URI and raw bitmap data.
+            // MEDIA_TYPE_MUSIC tells the system this is music content, which is required for:
+            // - Xiaomi HyperOS Music Island (Dynamic Island near camera)
+            // - Samsung OneUI media controls
+            // - Android 14+ lock screen media widget
+            val metadataBuilder = MediaMetadata.Builder()
+                .setTitle(song.title)
+                .setArtist(song.artist)
+                .setArtworkUri(song.thumbnailUrl?.let { Uri.parse(it) })
+                .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                .setIsPlayable(true)
+                .setIsBrowsable(false)
+
+            if (artworkData != null) {
+                metadataBuilder.setArtworkData(artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+            }
+
             val mediaItem = MediaItem.Builder()
                 .setMediaId(song.id)
                 .setUri(playbackUri)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.artist)
-                        .setArtworkUri(song.thumbnailUrl?.let { Uri.parse(it) })
-                        .build()
-                )
+                .setMediaMetadata(metadataBuilder.build())
                 .build()
 
-            exoPlayer?.apply {
-                setMediaItem(mediaItem)
-                prepare()
-                play()
-            }
+            // Set the media item FIRST so the player has metadata before the service starts.
+            // This ensures the notification is created with title/artwork from the first update.
+            exoPlayer?.setMediaItem(mediaItem)
+            exoPlayer?.prepare()
+
+            // Start foreground service AFTER media item is set so the notification
+            // has metadata (title, artist, artwork) immediately when it first appears.
+            // This is critical for Xiaomi HyperOS Music Island to recognise the session.
+            startPlaybackService()
+
+            // Now start playback – the service is ready to observe the state transition
+            exoPlayer?.play()
 
             _playerState.update {
                 it.copy(
@@ -430,6 +560,9 @@ class PlayerController @Inject constructor(
 
     fun release() {
         stopPositionUpdates()
+        visualizerHelper.release()
+        mediaSession?.release()
+        mediaSession = null
         exoPlayer?.release()
         exoPlayer = null
     }

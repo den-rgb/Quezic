@@ -1,28 +1,38 @@
 package com.quezic.domain.recommendation
 
+import android.util.Log
+import com.quezic.data.remote.LastFmService
 import com.quezic.data.remote.MusicExtractorService
 import com.quezic.domain.model.SearchResult
 import com.quezic.domain.model.Song
 import com.quezic.domain.model.SourceType
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Smart recommendation engine that analyzes playlist content
- * and suggests similar songs based on multiple factors.
+ * Smart recommendation engine using Last.fm for music intelligence
+ * and YouTube/SoundCloud for playable content.
+ * 
+ * Uses:
+ * - Collaborative filtering via Last.fm's similar artists/tracks
+ * - Content-based filtering via genre tags
+ * - Artist similarity scoring
  */
 @Singleton
 class RecommendationEngine @Inject constructor(
-    private val extractorService: MusicExtractorService
+    private val extractorService: MusicExtractorService,
+    private val lastFmService: LastFmService
 ) {
+    
+    companion object {
+        private const val TAG = "RecommendationEngine"
+    }
 
     /**
-     * Get recommendations based on a list of songs (e.g., from a playlist)
-     * Balances familiar artists with discovery of new artists
+     * Get recommendations based on a list of songs using Last.fm music intelligence
+     * Uses collaborative filtering (similar artists/tracks) and content-based filtering (genres)
      */
     suspend fun getRecommendations(
         songs: List<Song>,
@@ -31,147 +41,137 @@ class RecommendationEngine @Inject constructor(
     ): List<SearchResult> = withContext(Dispatchers.Default) {
         if (songs.isEmpty()) return@withContext emptyList()
 
+        Log.d(TAG, "Getting recommendations for ${songs.size} songs, forceRefresh=$forceRefresh")
+        
         // Analyze the playlist to extract features
         val profile = analyzePlaylist(songs)
         val existingArtists = songs.map { it.artist.lowercase() }.toSet()
+        val existingTitlesNormalized = songs.map { normalizeTitle(it.title) }.toSet()
         
         // Get recommendations from multiple strategies
         val recommendations = mutableListOf<ScoredResult>()
-
-        // Strategy 1: Get related songs (best for discovering new artists)
-        // Take random songs if refreshing to get different recommendations
-        val seedSongs = if (forceRefresh) {
+        
+        // Strategy 1: Last.fm Similar Artists (Collaborative Filtering)
+        // Get similar artists and search for their top tracks
+        val artistsForSimilar = if (forceRefresh) {
+            profile.topArtists.shuffled().take(3)
+        } else {
+            profile.topArtists.take(3)
+        }
+        
+        artistsForSimilar.forEach { artistName ->
+            try {
+                val similarArtists = lastFmService.getSimilarArtists(artistName, limit = 5)
+                Log.d(TAG, "Last.fm found ${similarArtists.size} similar artists for $artistName")
+                
+                similarArtists.forEach { similar ->
+                    // Skip if we already have this artist
+                    if (similar.name.lowercase() in existingArtists) return@forEach
+                    
+                    // Search YouTube for this artist's music
+                    try {
+                        val searchResults = extractorService.search(
+                            "${similar.name} official audio",
+                            listOf(SourceType.YOUTUBE)
+                        )
+                        searchResults.take(2).forEach { result ->
+                            if (isValidRecommendation(result, existingArtists, existingTitlesNormalized)) {
+                                recommendations.add(ScoredResult(
+                                    result,
+                                    0.7f + (similar.matchScore * 0.2f), // Higher score for better Last.fm match
+                                    true
+                                ))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Continue
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get similar artists for $artistName: ${e.message}")
+            }
+        }
+        
+        // Strategy 2: Last.fm Similar Tracks (Track-based Collaborative Filtering)
+        val songsForSimilar = if (forceRefresh) {
             songs.shuffled().take(3)
         } else {
             songs.take(3)
         }
         
-        seedSongs.forEach { song ->
+        songsForSimilar.forEach { song ->
             try {
-                val related = extractorService.getRelatedSongs(
-                    song.sourceType,
-                    song.sourceId,
-                    8
-                )
-                related.forEach { result ->
-                    val isNewArtist = result.artist.lowercase() !in existingArtists
-                    recommendations.add(ScoredResult(
-                        result, 
-                        calculateRelatedScore(result, profile, isNewArtist),
-                        isNewArtist
-                    ))
-                }
-            } catch (e: Exception) {
-                // Continue
-            }
-        }
-
-        // Strategy 2: Search for genre/mood keywords (good for variety)
-        val keywordsToSearch = if (forceRefresh) {
-            profile.keywords.shuffled().take(3)
-        } else {
-            profile.keywords.take(3)
-        }
-        
-        keywordsToSearch.forEach { genre ->
-            try {
-                // Search for genre-based discoveries with "official" to get real songs
-                val query = "$genre new music official audio"
+                val similarTracks = lastFmService.getSimilarTracks(song.artist, song.title, limit = 5)
+                Log.d(TAG, "Last.fm found ${similarTracks.size} similar tracks for ${song.title}")
                 
-                val results = extractorService.search(
-                    query,
-                    listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
-                )
-                results.take(8).forEach { result ->
-                    val isNewArtist = result.artist.lowercase() !in existingArtists
-                    recommendations.add(ScoredResult(
-                        result, 
-                        calculateKeywordScore(result, profile, isNewArtist),
-                        isNewArtist
-                    ))
-                }
-            } catch (e: Exception) {
-                // Continue
-            }
-        }
-
-        // Strategy 3: Search for artists SIMILAR TO playlist artists (to discover new artists)
-        val artistsToSearch = if (forceRefresh) {
-            profile.topArtists.shuffled().take(2)
-        } else {
-            profile.topArtists.take(2)
-        }
-        
-        artistsToSearch.forEach { artist ->
-            try {
-                val results = extractorService.searchSimilarArtists(
-                    artist,
-                    listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
-                )
-                results.forEach { result ->
-                    val isNewArtist = result.artist.lowercase() !in existingArtists
-                    // Only add if it's actually a new artist
-                    if (isNewArtist) {
-                        recommendations.add(ScoredResult(
-                            result, 
-                            calculateArtistScore(result, profile) + 0.2f, // Bonus for discovery
-                            true
-                        ))
+                similarTracks.forEach { similar ->
+                    // Skip if we already have this artist
+                    if (similar.artist.lowercase() in existingArtists) return@forEach
+                    
+                    // Search YouTube for this specific track
+                    try {
+                        val searchResults = extractorService.search(
+                            "${similar.artist} ${similar.name} official",
+                            listOf(SourceType.YOUTUBE)
+                        )
+                        searchResults.take(1).forEach { result ->
+                            if (isValidRecommendation(result, existingArtists, existingTitlesNormalized)) {
+                                recommendations.add(ScoredResult(
+                                    result,
+                                    0.8f + (similar.matchScore * 0.15f), // High score for track similarity
+                                    true
+                                ))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Continue
                     }
                 }
             } catch (e: Exception) {
-                // Continue with other strategies
+                Log.w(TAG, "Failed to get similar tracks for ${song.title}: ${e.message}")
             }
         }
         
-        // Strategy 4: Curated playlist discovery (to find songs from editorial playlists)
-        val playlistSearches = listOf(
-            "best new indie songs 2024 official",
-            "underground music discoveries official audio",
-            "hidden gem songs official video",
-            "indie music blog picks official",
-            "new artists to watch official audio"
-        )
-        try {
-            val playlistQuery = if (forceRefresh) playlistSearches.random() else playlistSearches.first()
-            val results = extractorService.search(
-                playlistQuery,
-                listOf(SourceType.YOUTUBE, SourceType.SOUNDCLOUD)
-            )
-            results.take(8).forEach { result ->
-                val isNewArtist = result.artist.lowercase() !in existingArtists
-                if (isNewArtist) {
-                    recommendations.add(ScoredResult(
-                        result,
-                        0.5f, // Base discovery score
-                        true
-                    ))
+        // Strategy 3: Genre-based discovery using Last.fm tags (Content-Based Filtering)
+        val artistForTags = profile.topArtists.firstOrNull()
+        if (artistForTags != null) {
+            try {
+                val tags = lastFmService.getArtistTags(artistForTags)
+                Log.d(TAG, "Last.fm tags for $artistForTags: $tags")
+                
+                tags.take(2).forEach { tag ->
+                    try {
+                        val searchResults = extractorService.search(
+                            "$tag music official audio",
+                            listOf(SourceType.YOUTUBE)
+                        )
+                        searchResults.take(3).forEach { result ->
+                            if (isValidRecommendation(result, existingArtists, existingTitlesNormalized)) {
+                                recommendations.add(ScoredResult(
+                                    result,
+                                    0.5f, // Base genre score
+                                    true
+                                ))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Continue
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get tags: ${e.message}")
             }
-        } catch (e: Exception) {
-            // Continue
         }
+        
+        Log.d(TAG, "Collected ${recommendations.size} raw recommendations")
 
-        // Deduplicate and filter out songs already in the playlist
+        // Deduplicate and filter
         val existingSongIds = songs.map { it.id }.toSet()
-        val existingTitles = songs.map { normalizeTitle(it.title) }.toSet()
-        
-        // Get existing artist names for filtering (to avoid songs mentioning these artists)
-        val existingArtistNames = songs.map { it.artist.lowercase() }.toSet()
-        
-        // Get key words from existing song titles to avoid finding "same song, different artist"
-        val existingTitleWords = songs.flatMap { song ->
-            normalizeTitle(song.title)
-                .split(Regex("\\s+"))
-                .filter { it.length > 3 }
-        }.toSet()
 
         val filteredResults = recommendations
             .filter { it.result.id !in existingSongIds }
-            .filter { normalizeTitle(it.result.title) !in existingTitles }
-            .filter { isLikelyMusic(it.result) } // Filter out non-music content
-            .filter { isByNewArtist(it.result, existingArtistNames) } // Filter songs mentioning existing artists
-            .filter { !hasSimilarTitle(it.result, existingTitleWords) } // Filter songs with same/similar titles
+            .filter { isLikelyMusic(it.result) }
+            .filter { isValidRecommendation(it.result, existingArtists, existingTitlesNormalized) }
             .distinctBy { it.result.id }
         
         // Ensure a mix of familiar and new artists
@@ -201,6 +201,37 @@ class RecommendationEngine @Inject constructor(
             .map { it.result }
     }
 
+    /**
+     * Check if a result is valid (not an existing artist, not a similar title)
+     */
+    private fun isValidRecommendation(
+        result: SearchResult,
+        existingArtists: Set<String>,
+        existingTitles: Set<String>
+    ): Boolean {
+        val artistLower = result.artist.lowercase()
+        val titleNormalized = normalizeTitle(result.title)
+        
+        // Reject if same artist
+        if (artistLower in existingArtists) return false
+        
+        // Reject if any existing artist name appears in result artist
+        if (existingArtists.any { artistLower.contains(it) || it.contains(artistLower) }) return false
+        
+        // Reject if same title
+        if (titleNormalized in existingTitles) return false
+        
+        // Reject covers, remixes, reactions
+        val titleLower = result.title.lowercase()
+        val rejectPatterns = listOf(
+            "cover", "remix", "reaction", "reacts", "review",
+            "karaoke", "instrumental", "tribute", "live session"
+        )
+        if (rejectPatterns.any { titleLower.contains(it) }) return false
+        
+        return true
+    }
+    
     /**
      * Analyze a playlist to extract a profile for recommendations
      */
@@ -265,75 +296,6 @@ class RecommendationEngine @Inject constructor(
     }
 
     /**
-     * Score a result based on artist similarity
-     */
-    private fun calculateArtistScore(result: SearchResult, profile: PlaylistProfile): Float {
-        var score = 0.5f // Base score
-
-        // Boost if artist matches
-        if (result.artist.lowercase() in profile.topArtists) {
-            score += 0.3f
-        }
-
-        // Boost if keywords match
-        val titleWords = result.title.lowercase().split(Regex("\\s+"))
-        val matchingKeywords = titleWords.count { it in profile.keywords }
-        score += (matchingKeywords * 0.05f).coerceAtMost(0.2f)
-
-        // Duration similarity
-        val durationDiff = kotlin.math.abs(result.duration - profile.avgDuration)
-        if (durationDiff < 60000) { // Within 1 minute
-            score += 0.1f
-        }
-
-        return score.coerceIn(0f, 1f)
-    }
-
-    /**
-     * Score a result based on keyword match
-     * New artists get a discovery bonus
-     */
-    private fun calculateKeywordScore(result: SearchResult, profile: PlaylistProfile, isNewArtist: Boolean): Float {
-        var score = 0.4f // Base score for keyword searches
-
-        // Check title for keyword matches
-        val titleWords = result.title.lowercase().split(Regex("\\s+"))
-        val matchingKeywords = titleWords.count { it in profile.keywords }
-        score += (matchingKeywords * 0.1f).coerceAtMost(0.3f)
-
-        // Discovery bonus for new artists (instead of penalizing them)
-        if (isNewArtist) {
-            score += 0.15f // Bonus for discovering new artists
-        } else if (result.artist.lowercase() in profile.topArtists) {
-            score += 0.1f // Smaller boost for familiar artists
-        }
-
-        return score.coerceIn(0f, 1f)
-    }
-
-    /**
-     * Score a related song result
-     * New artists get a discovery bonus to encourage variety
-     */
-    private fun calculateRelatedScore(result: SearchResult, profile: PlaylistProfile, isNewArtist: Boolean): Float {
-        var score = 0.55f // Base score for related songs
-
-        // Discovery bonus for new artists
-        if (isNewArtist) {
-            score += 0.25f // Strong bonus for discovering new artists via related songs
-        } else if (result.artist.lowercase() in profile.topArtists) {
-            score += 0.1f // Smaller boost for same artist
-        }
-
-        // Check for keyword matches (mood/genre similarity)
-        val titleWords = result.title.lowercase().split(Regex("\\s+"))
-        val matchingKeywords = titleWords.count { it in profile.keywords }
-        score += (matchingKeywords * 0.05f).coerceAtMost(0.15f)
-
-        return score.coerceIn(0f, 1f)
-    }
-
-    /**
      * Normalize a title for comparison (remove common variations)
      */
     private fun normalizeTitle(title: String): String {
@@ -343,72 +305,6 @@ class RecommendationEngine @Inject constructor(
             .replace(Regex("official|video|audio|lyrics|hd|hq"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
-    }
-    
-    /**
-     * Check if a result has a very similar title to existing songs
-     * Prevents "Love by Artist A" when you already have "Love by Artist B"
-     */
-    private fun hasSimilarTitle(result: SearchResult, existingTitleWords: Set<String>): Boolean {
-        val normalizedTitle = normalizeTitle(result.title)
-        val resultWords = normalizedTitle.split(Regex("\\s+")).filter { it.length > 3 }
-        
-        // If the title is very short (1-2 significant words), check for exact match
-        if (resultWords.size <= 2) {
-            return resultWords.any { it in existingTitleWords }
-        }
-        
-        // For longer titles, check if majority of words match existing titles
-        val matchingWords = resultWords.count { it in existingTitleWords }
-        val matchRatio = matchingWords.toFloat() / resultWords.size
-        
-        // If more than 50% of words match, it's probably the same song
-        return matchRatio > 0.5f
-    }
-    
-    /**
-     * Check if a result is by a genuinely new artist (not mentioning existing artists)
-     * Filters out covers, remixes, and songs that mention existing artist names in the title
-     */
-    private fun isByNewArtist(result: SearchResult, existingArtistNames: Set<String>): Boolean {
-        val titleLower = result.title.lowercase()
-        val artistLower = result.artist.lowercase()
-        
-        // Check if the artist is one we already have
-        for (existingArtist in existingArtistNames) {
-            // Skip very short artist names to avoid false positives
-            if (existingArtist.length < 3) continue
-            
-            // If the song is BY an existing artist, filter it out
-            if (artistLower.contains(existingArtist) || existingArtist.contains(artistLower)) {
-                return false
-            }
-            
-            // If the title mentions an existing artist (covers, remixes, reactions, etc.)
-            if (titleLower.contains(existingArtist)) {
-                return false
-            }
-            
-            // Check individual words for longer artist names
-            val artistWords = existingArtist.split(Regex("\\s+")).filter { it.length > 3 }
-            // If all significant words of the artist appear in the title, it's probably about that artist
-            if (artistWords.size >= 2 && artistWords.all { titleLower.contains(it) }) {
-                return false
-            }
-        }
-        
-        // Filter out common non-original content patterns
-        val coverPatterns = listOf(
-            "cover", "remix", "reaction", "reacts", "review",
-            "type beat", "instrumental", "karaoke", "tribute",
-            "in the style of", "sounds like", "inspired by"
-        )
-        
-        if (coverPatterns.any { titleLower.contains(it) }) {
-            return false
-        }
-        
-        return true
     }
     
     /**

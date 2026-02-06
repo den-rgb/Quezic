@@ -133,11 +133,30 @@ class MusicRepositoryImpl @Inject constructor(
         // If downloaded, return local path
         song.localPath?.let { return it }
         
-        // Otherwise get stream URL
-        return extractorService.getStreamUrl(
+        // Try primary source first
+        val primaryUrl = extractorService.getStreamUrl(
             sourceType = song.sourceType,
             sourceId = song.sourceId
         )
+        
+        if (primaryUrl != null) return primaryUrl
+        
+        // Primary failed — try fallback source (SoundCloud→YouTube or YouTube→SoundCloud)
+        android.util.Log.d("MusicRepository", "Primary source failed for '${song.title}', trying fallback...")
+        val fallback = extractorService.getDownloadUrlFromFallbackSource(
+            originalSourceType = song.sourceType,
+            songTitle = song.title,
+            songArtist = song.artist
+        )
+        
+        if (fallback != null) {
+            android.util.Log.d("MusicRepository", "Fallback found via ${fallback.newSourceType}")
+            // Update the song's source in DB so future plays use the working source
+            songDao.updateSource(song.id, fallback.newSourceType.name, fallback.newSourceId)
+            return fallback.streamUrl
+        }
+        
+        return null
     }
 
     override suspend fun downloadSong(song: Song, quality: StreamQuality): Result<String> {

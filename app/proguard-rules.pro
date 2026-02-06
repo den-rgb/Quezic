@@ -1,11 +1,14 @@
 # Add project specific ProGuard rules here.
 
-# Keep NewPipe Extractor
+# Keep NewPipe Extractor and its dependencies
 -keep class org.schabi.newpipe.extractor.** { *; }
 -keep class org.mozilla.javascript.** { *; }
 -keep class com.grack.nanojson.** { *; }
 -dontwarn org.mozilla.javascript.**
 -dontwarn com.grack.nanojson.**
+
+# jsoup (used by NewPipe) references re2j optionally — not present at runtime, safe to ignore
+-dontwarn com.google.re2j.**
 
 # Keep Retrofit
 -keepattributes Signature

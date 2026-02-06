@@ -280,6 +280,30 @@ class SearchViewModel @Inject constructor(
             }
         }
     }
+
+    fun createPlaylistAndAddSong(name: String, description: String) {
+        viewModelScope.launch {
+            val selectedSearchResult = _uiState.value.selectedSearchResult
+            val song = _uiState.value.selectedSong ?: selectedSearchResult?.toSong()
+            song?.let {
+                // Make sure song is in library first
+                if (selectedSearchResult != null) {
+                    musicRepository.insertSong(it)
+                }
+                val playlistId = playlistRepository.createPlaylist(name, description)
+                playlistRepository.addSongToPlaylist(playlistId, it.id)
+                _uiState.update { state ->
+                    state.copy(
+                        showAddToPlaylistDialog = false,
+                        addedToLibrary = "Added to \"$name\""
+                    )
+                }
+            }
+            hideOptionsMenu()
+            delay(1500)
+            _uiState.update { it.copy(addedToLibrary = null) }
+        }
+    }
     
     fun toggleFavorite() {
         viewModelScope.launch {

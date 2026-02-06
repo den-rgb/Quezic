@@ -25,6 +25,7 @@ sealed class Screen(val route: String) {
         fun createRoute(albumName: String) = "album/$albumName"
     }
     object ImportSpotify : Screen("import/spotify")
+    object ImportSoundCloud : Screen("import/soundcloud")
     object Settings : Screen("settings")
 }
 

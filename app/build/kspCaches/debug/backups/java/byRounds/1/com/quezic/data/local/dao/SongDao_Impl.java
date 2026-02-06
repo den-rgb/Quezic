@@ -48,6 +48,8 @@ public final class SongDao_Impl implements SongDao {
 
   private final SharedSQLiteStatement __preparedStmtOfUpdateLocalPath;
 
+  private final SharedSQLiteStatement __preparedStmtOfUpdateSource;
+
   private final SharedSQLiteStatement __preparedStmtOfDeleteSongById;
 
   public SongDao_Impl(@NonNull final RoomDatabase __db) {
@@ -191,6 +193,14 @@ public final class SongDao_Impl implements SongDao {
       @NonNull
       public String createQuery() {
         final String _query = "UPDATE songs SET localPath = ? WHERE id = ?";
+        return _query;
+      }
+    };
+    this.__preparedStmtOfUpdateSource = new SharedSQLiteStatement(__db) {
+      @Override
+      @NonNull
+      public String createQuery() {
+        final String _query = "UPDATE songs SET sourceType = ?, sourceId = ? WHERE id = ?";
         return _query;
       }
     };
@@ -361,6 +371,36 @@ public final class SongDao_Impl implements SongDao {
           }
         } finally {
           __preparedStmtOfUpdateLocalPath.release(_stmt);
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object updateSource(final String songId, final String sourceType, final String sourceId,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final SupportSQLiteStatement _stmt = __preparedStmtOfUpdateSource.acquire();
+        int _argIndex = 1;
+        _stmt.bindString(_argIndex, sourceType);
+        _argIndex = 2;
+        _stmt.bindString(_argIndex, sourceId);
+        _argIndex = 3;
+        _stmt.bindString(_argIndex, songId);
+        try {
+          __db.beginTransaction();
+          try {
+            _stmt.executeUpdateDelete();
+            __db.setTransactionSuccessful();
+            return Unit.INSTANCE;
+          } finally {
+            __db.endTransaction();
+          }
+        } finally {
+          __preparedStmtOfUpdateSource.release(_stmt);
         }
       }
     }, $completion);
