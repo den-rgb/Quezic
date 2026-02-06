@@ -69,36 +69,58 @@ async function extractStreamUrl(videoId) {
         console.log('No cookies available, trying without authentication');
     }
     
+    // Common args for age bypass and better extraction
+    const ageBypass = '--age-limit 21';
+    
     // Try different extraction strategies
     // With cookies, we primarily use web client; without cookies, try mobile clients first
     const strategies = cookiesAvailable ? [
-        // With cookies: web client works best
+        // With cookies: try tv_embedded first (best for age-restricted)
+        {
+            name: 'tv_embedded_with_cookies',
+            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=tv_embedded" -f "bestaudio[ext=m4a]/bestaudio" -j`
+        },
+        // Web client with age bypass
         {
             name: 'web_with_cookies',
-            args: `${cookieArg} -f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
+            args: `${cookieArg} ${ageBypass} -f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
         },
-        // Fallback to iOS client
+        // iOS client (good for age-restricted)
         {
             name: 'ios_with_cookies',
-            args: `${cookieArg} --extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
+            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
+        },
+        // Android client
+        {
+            name: 'android_with_cookies',
+            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]/bestaudio" -j`
+        },
+        // MediaConnect client (sometimes bypasses age gates)
+        {
+            name: 'mediaconnect_with_cookies',
+            args: `${cookieArg} ${ageBypass} --extractor-args "youtube:player_client=mediaconnect" -f "bestaudio[ext=m4a]/bestaudio" -j`
         }
     ] : [
-        // Without cookies: try mobile clients which have less bot detection
+        // Without cookies: try clients that can bypass age restrictions
+        {
+            name: 'tv_embedded',
+            args: `${ageBypass} --extractor-args "youtube:player_client=tv_embedded" -f "bestaudio[ext=m4a]/bestaudio" -j`
+        },
         {
             name: 'ios_client',
-            args: `--extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
+            args: `${ageBypass} --extractor-args "youtube:player_client=ios" -f "bestaudio[ext=m4a]/bestaudio" -j`
         },
         {
             name: 'android_client',
-            args: `--extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]/bestaudio" -j`
+            args: `${ageBypass} --extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]/bestaudio" -j`
         },
         {
-            name: 'tv_embedded',
-            args: `--extractor-args "youtube:player_client=tv_embedded" -f "bestaudio[ext=m4a]/bestaudio" -j`
+            name: 'mediaconnect',
+            args: `${ageBypass} --extractor-args "youtube:player_client=mediaconnect" -f "bestaudio[ext=m4a]/bestaudio" -j`
         },
         {
             name: 'web_client',
-            args: `-f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
+            args: `${ageBypass} -f "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio" -j`
         }
     ];
     
@@ -148,15 +170,17 @@ async function extractStreamUrl(videoId) {
             return result;
             
         } catch (error) {
-            console.log(`${strategy.name} failed: ${error.message.substring(0, 100)}`);
+            console.log(`${strategy.name} failed: ${error.message.substring(0, 150)}`);
             lastError = error;
             
-            // If it's a definitive error, don't try other strategies
+            // Only break on truly unrecoverable errors
             if (error.message.includes('Video unavailable') || 
                 error.message.includes('Private video') ||
-                error.message.includes('age')) {
+                error.message.includes('removed') ||
+                error.message.includes('terminated')) {
                 break;
             }
+            // For age verification, keep trying other strategies - some clients bypass it
         }
     }
     
@@ -167,12 +191,16 @@ async function extractStreamUrl(videoId) {
         throw new Error('Video is unavailable or private');
     }
     
-    if (errorMsg.includes('age')) {
-        throw new Error('Video requires age verification');
+    if (errorMsg.includes('age') || errorMsg.includes('confirm your age')) {
+        throw new Error('Age-restricted video - try exporting cookies from non-private browser');
     }
     
     if (errorMsg.includes('Sign in') || errorMsg.includes('bot')) {
-        throw new Error('YouTube requires authentication - try again later');
+        throw new Error('YouTube requires authentication - upload fresh cookies');
+    }
+    
+    if (errorMsg.includes('copyright') || errorMsg.includes('blocked')) {
+        throw new Error('Video blocked in proxy region');
     }
     
     throw new Error(`Extraction failed: ${errorMsg.substring(0, 200)}`);
