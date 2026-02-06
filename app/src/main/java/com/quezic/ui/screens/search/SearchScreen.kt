@@ -122,7 +122,7 @@ fun SearchScreen(
                     unfocusedContainerColor = Gray5,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = SystemPink,
+                    cursorColor = AccentGreen,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White
                 ),
@@ -173,7 +173,7 @@ fun SearchScreen(
                     CircularProgressIndicator(
                         modifier = Modifier.size(36.dp),
                         strokeWidth = 3.dp,
-                        color = SystemPink
+                        color = AccentGreen
                     )
                 }
             }
@@ -459,7 +459,7 @@ fun SearchScreen(
                     OptionsMenuItem(
                         icon = if (song.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         text = if (song.isFavorite) "Remove from favorites" else "Add to favorites",
-                        tint = if (song.isFavorite) SystemPink else Gray1,
+                        tint = if (song.isFavorite) AccentGreen else Gray1,
                         onClick = {
                             viewModel.toggleFavorite()
                             viewModel.hideOptionsMenu()
@@ -597,7 +597,7 @@ private fun ResultSectionHeader(
                 text = count.toString(),
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                color = SystemPink
+                color = AccentGreen
             )
         }
     }
@@ -698,7 +698,7 @@ private fun SongResultRow(
                             Icons.Rounded.CheckCircle,
                             contentDescription = "In Library",
                             modifier = Modifier.size(16.dp),
-                            tint = SystemPink
+                            tint = AccentGreen
                         )
                     }
                 }

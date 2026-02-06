@@ -23,13 +23,39 @@ class ProxySettings @Inject constructor(
 
     /**
      * Get the configured proxy URL.
-     * Returns null if not configured.
+     * Defaults to the official Quezic proxy if not configured.
      */
     var proxyUrl: String?
-        get() = prefs.getString(KEY_PROXY_URL, null)?.takeIf { it.isNotBlank() }
-        set(value) {
-            prefs.edit().putString(KEY_PROXY_URL, value?.trim()).apply()
+        get() {
+            val url = prefs.getString(KEY_PROXY_URL, DEFAULT_PROXY_URL)?.takeIf { it.isNotBlank() }
+            // Validate and fix URL format
+            return url?.let { normalizeUrl(it) }
         }
+        set(value) {
+            prefs.edit().putString(KEY_PROXY_URL, value?.trim()?.let { normalizeUrl(it) }).apply()
+        }
+    
+    /**
+     * Normalize URL to ensure proper format (https://)
+     */
+    private fun normalizeUrl(url: String): String {
+        var normalized = url.trim()
+        
+        // Fix common issues: https: without // 
+        if (normalized.startsWith("https:") && !normalized.startsWith("https://")) {
+            normalized = "https://" + normalized.removePrefix("https:")
+        }
+        if (normalized.startsWith("http:") && !normalized.startsWith("http://")) {
+            normalized = "http://" + normalized.removePrefix("http:")
+        }
+        
+        // Add https:// if no scheme
+        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+            normalized = "https://$normalized"
+        }
+        
+        return normalized.trimEnd('/')
+    }
 
     /**
      * Check if a proxy is configured and enabled.
@@ -72,6 +98,9 @@ class ProxySettings @Inject constructor(
         private const val PREFS_NAME = "quezic_proxy_settings"
         private const val KEY_PROXY_URL = "proxy_url"
         private const val KEY_PROXY_ENABLED = "proxy_enabled"
+        
+        // Default proxy server hosted on Railway
+        const val DEFAULT_PROXY_URL = "https://delightful-friendship-production-e4ff.up.railway.app"
     }
 }
 

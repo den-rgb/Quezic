@@ -59,7 +59,7 @@ fun MiniPlayer(
                         .height(2.dp)
                         .background(
                             Brush.horizontalGradient(
-                                colors = listOf(SystemPink, SystemPurple)
+                                colors = listOf(AccentGreen, SystemPurple)
                             )
                         )
                 )
@@ -91,7 +91,7 @@ fun MiniPlayer(
                                 .offset(x = 4.dp, y = 4.dp)
                                 .size(14.dp)
                                 .clip(CircleShape)
-                                .background(SystemPink),
+                                .background(AccentGreen),
                             contentAlignment = Alignment.Center
                         ) {
                             PlayingBars()
@@ -154,7 +154,7 @@ fun MiniPlayer(
                     Surface(
                         onClick = onPlayPause,
                         shape = CircleShape,
-                        color = SystemPink
+                        color = AccentGreen
                     ) {
                         Icon(
                             imageVector = if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,

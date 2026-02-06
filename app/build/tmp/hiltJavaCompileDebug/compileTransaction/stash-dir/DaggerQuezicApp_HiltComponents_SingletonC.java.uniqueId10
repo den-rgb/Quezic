@@ -518,7 +518,7 @@ public final class DaggerQuezicApp_HiltComponents_SingletonC {
           return (T) new LibraryViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.provideDownloadManagerProvider.get());
 
           case 3: // com.quezic.ui.viewmodel.PlayerViewModel 
-          return (T) new PlayerViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlayerControllerProvider.get());
+          return (T) new PlayerViewModel(singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.providePlayerControllerProvider.get());
 
           case 4: // com.quezic.ui.screens.playlist.PlaylistViewModel 
           return (T) new PlaylistViewModel(singletonCImpl.providePlaylistRepositoryProvider.get(), singletonCImpl.provideMusicRepositoryProvider.get(), singletonCImpl.provideRecommendationEngineProvider.get(), singletonCImpl.provideDownloadManagerProvider.get());

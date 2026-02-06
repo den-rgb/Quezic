@@ -1,5 +1,6 @@
 package com.quezic.ui.screens.player
 
+import android.content.Intent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,6 +34,8 @@ import coil.compose.AsyncImage
 import com.quezic.domain.model.RepeatMode
 import com.quezic.domain.model.Song
 import com.quezic.ui.theme.*
+import com.quezic.ui.theme.AccentGreen
+import com.quezic.ui.theme.AccentPurple
 import com.quezic.ui.viewmodel.PlayerViewModel
 import androidx.compose.animation.core.RepeatMode as AnimationRepeatMode
 
@@ -39,10 +43,12 @@ import androidx.compose.animation.core.RepeatMode as AnimationRepeatMode
 @Composable
 fun PlayerScreen(
     onNavigateBack: () -> Unit,
+    onShowAddToPlaylist: (Song) -> Unit = {},
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val song = playerState.currentSong
+    val context = LocalContext.current
     
     var showQueue by remember { mutableStateOf(false) }
 
@@ -97,14 +103,22 @@ fun PlayerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 28.dp)
                 .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
-            // Top bar
+            // Top bar - with background to separate from content
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.6f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -121,7 +135,7 @@ fun PlayerScreen(
                     text = "Now Playing",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = Gray1
+                    color = Color.White.copy(alpha = 0.7f)
                 )
                 
                 IconButton(onClick = { showQueue = true }) {
@@ -133,18 +147,17 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Album Art
+            // Album Art - constrained size to prevent overlap
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(0.5f)
+                    .padding(horizontal = 28.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
+                        .fillMaxWidth(0.85f)
                         .aspectRatio(1f)
                         .shadow(32.dp, RoundedCornerShape(20.dp))
                         .clip(RoundedCornerShape(20.dp))
@@ -159,35 +172,39 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Song Info
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = song.title,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = song.artist,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = Gray1,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Progress bar
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
                 Slider(
                     value = playerState.progress,
                     onValueChange = { progress ->
@@ -195,7 +212,7 @@ fun PlayerScreen(
                     },
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = SystemPink,
+                        activeTrackColor = AccentGreen,
                         inactiveTrackColor = Gray4
                     ),
                     modifier = Modifier.height(20.dp)
@@ -220,11 +237,11 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Controls
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -233,7 +250,7 @@ fun PlayerScreen(
                     Icon(
                         Icons.Rounded.Shuffle,
                         contentDescription = "Shuffle",
-                        tint = if (playerState.shuffleEnabled) SystemPink else Gray1,
+                        tint = if (playerState.shuffleEnabled) AccentGreen else Gray1,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -256,7 +273,7 @@ fun PlayerScreen(
                 Surface(
                     onClick = { viewModel.togglePlayPause() },
                     shape = CircleShape,
-                    color = SystemPink,
+                    color = AccentGreen,
                     modifier = Modifier.size(72.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -291,30 +308,41 @@ fun PlayerScreen(
                             else -> Icons.Rounded.Repeat
                         },
                         contentDescription = "Repeat",
-                        tint = if (playerState.repeatMode != RepeatMode.OFF) SystemPink else Gray1,
+                        tint = if (playerState.repeatMode != RepeatMode.OFF) AccentGreen else Gray1,
                         modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Bottom actions
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 32.dp),
+                    .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                IconButton(onClick = { /* Add to favorites */ }) {
+                IconButton(onClick = { viewModel.toggleFavorite() }) {
                     Icon(
                         if (song.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (song.isFavorite) SystemPink else Gray1
+                        tint = if (song.isFavorite) AccentGreen else Gray1
                     )
                 }
                 
-                IconButton(onClick = { /* Share */ }) {
+                IconButton(onClick = { 
+                    val shareUrl = viewModel.getCurrentSongShareUrl()
+                    if (shareUrl != null) {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, "Check out: ${song.title} by ${song.artist}\n$shareUrl")
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "Share song")
+                        context.startActivity(shareIntent)
+                    }
+                }) {
                     Icon(
                         Icons.Rounded.Share,
                         contentDescription = "Share",
@@ -322,7 +350,7 @@ fun PlayerScreen(
                     )
                 }
                 
-                IconButton(onClick = { /* Add to playlist */ }) {
+                IconButton(onClick = { onShowAddToPlaylist(song) }) {
                     Icon(
                         Icons.Rounded.PlaylistAdd,
                         contentDescription = "Add to playlist",
@@ -391,7 +419,7 @@ private fun QueueBottomSheet(
                     color = Color.White
                 )
                 TextButton(onClick = onClearQueue) {
-                    Text("Clear", color = SystemPink)
+                    Text("Clear", color = AccentGreen)
                 }
             }
 
@@ -435,7 +463,7 @@ private fun QueueItem(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
-        color = if (isPlaying) SystemPink.copy(alpha = 0.1f) else Color.Transparent
+        color = if (isPlaying) AccentGreen.copy(alpha = 0.1f) else Color.Transparent
     ) {
         Row(
             modifier = Modifier
@@ -447,7 +475,7 @@ private fun QueueItem(
                 Icon(
                     Icons.Rounded.Equalizer,
                     contentDescription = "Playing",
-                    tint = SystemPink,
+                    tint = AccentGreen,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -472,7 +500,7 @@ private fun QueueItem(
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isPlaying) SystemPink else Color.White
+                    color = if (isPlaying) AccentGreen else Color.White
                 )
                 Text(
                     text = song.artist,

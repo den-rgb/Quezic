@@ -74,7 +74,7 @@ fun SettingsScreen(
             // YouTube Proxy Section
             SettingsSection(title = "YouTube Proxy") {
                 Text(
-                    text = "Configure a self-hosted proxy server to bypass YouTube's playback restrictions.",
+                    text = "A proxy server is used to enable YouTube audio playback. The default server is provided for convenience.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray2,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -99,9 +99,9 @@ fun SettingsScreen(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SystemPink,
-                        focusedLabelColor = SystemPink,
-                        cursorColor = SystemPink,
+                        focusedBorderColor = AccentGreen,
+                        focusedLabelColor = AccentGreen,
+                        cursorColor = AccentGreen,
                         unfocusedBorderColor = Gray3,
                         unfocusedLabelColor = Gray2,
                         focusedTextColor = Color.White,
@@ -138,7 +138,7 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.toggleProxyEnabled(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = SystemPink,
+                            checkedTrackColor = AccentGreen,
                             uncheckedThumbColor = Gray2,
                             uncheckedTrackColor = Gray4
                         )
@@ -157,16 +157,16 @@ fun SettingsScreen(
                         enabled = uiState.proxyUrl.isNotBlank() && !uiState.isTestingProxy,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = SystemPink
+                            contentColor = AccentGreen
                         ),
                         border = ButtonDefaults.outlinedButtonBorder.copy(
-                            brush = androidx.compose.ui.graphics.SolidColor(SystemPink)
+                            brush = androidx.compose.ui.graphics.SolidColor(AccentGreen)
                         )
                     ) {
                         if (uiState.isTestingProxy) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = SystemPink,
+                                color = AccentGreen,
                                 strokeWidth = 2.dp
                             )
                         } else {
@@ -187,7 +187,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = SystemPink,
+                            containerColor = AccentGreen,
                             contentColor = Color.White
                         )
                     ) {
@@ -199,6 +199,22 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Save")
                     }
+                }
+                
+                // Reset to default button
+                TextButton(
+                    onClick = { viewModel.resetToDefaultProxy() },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Gray2
+                    )
+                ) {
+                    Icon(
+                        Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Reset to default")
                 }
                 
                 // Test result
@@ -276,37 +292,40 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Setting up your proxy server:",
+                                text = "About the proxy:",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White
                             )
                             
+                            Text(
+                                text = "The default proxy server is provided for your convenience. If you prefer to host your own, follow these steps:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray1,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            
                             HelpStep(
                                 number = "1",
-                                text = "Get a VPS (DigitalOcean, Vultr, etc.) or use your home PC"
+                                text = "Push the 'proxy-server' folder to GitHub"
                             )
                             HelpStep(
                                 number = "2",
-                                text = "Install Docker on your server"
+                                text = "Deploy to Railway, Render, or Fly.io (free tier available)"
                             )
                             HelpStep(
                                 number = "3",
-                                text = "Copy the 'proxy-server' folder from the Quezic source"
+                                text = "Or run locally with Docker: docker compose up -d"
                             )
                             HelpStep(
                                 number = "4",
-                                text = "Run: docker-compose up -d"
-                            )
-                            HelpStep(
-                                number = "5",
-                                text = "Enter your server's URL above (e.g., http://123.45.67.89:3000)"
+                                text = "Enter your server's URL above"
                             )
                             
                             Spacer(modifier = Modifier.height(4.dp))
                             
                             Text(
-                                text = "The proxy uses a headless browser to generate valid YouTube authentication tokens.",
+                                text = "The proxy uses yt-dlp to extract YouTube audio streams reliably.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Gray2
                             )
@@ -363,7 +382,7 @@ private fun HelpStep(
         Surface(
             modifier = Modifier.size(20.dp),
             shape = RoundedCornerShape(4.dp),
-            color = SystemPink
+            color = AccentGreen
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(

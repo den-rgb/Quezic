@@ -6,10 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -131,10 +133,12 @@ private fun UrlInputStage(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -207,7 +211,7 @@ private fun UrlInputStage(
                 unfocusedBorderColor = Gray4,
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                cursorColor = SystemPink
+                cursorColor = AccentGreen
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(
@@ -411,7 +415,7 @@ private fun MatchingStage(
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp)),
-            color = SystemPink,
+            color = AccentGreen,
             trackColor = Gray4
         )
 
@@ -427,7 +431,7 @@ private fun MatchingStage(
             "${(progress * 100).toInt()}%",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
-            color = SystemPink
+            color = AccentGreen
         )
     }
 }
@@ -474,7 +478,7 @@ private fun ReviewStage(
                         label = { Text("Playlist name", color = Gray2) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SystemPink,
+                            focusedBorderColor = AccentGreen,
                             unfocusedBorderColor = Gray4,
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White
@@ -528,7 +532,7 @@ private fun ReviewStage(
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = SystemPink,
+                    containerColor = AccentGreen,
                     disabledContainerColor = Gray4
                 )
             ) {
@@ -724,7 +728,7 @@ private fun MatchOption(
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) SystemPink.copy(alpha = 0.2f) else Gray4
+        color = if (isSelected) AccentGreen.copy(alpha = 0.2f) else Gray4
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -759,7 +763,7 @@ private fun MatchOption(
                 Icon(
                     Icons.Rounded.CheckCircle,
                     contentDescription = null,
-                    tint = SystemPink,
+                    tint = AccentGreen,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -780,7 +784,7 @@ private fun ImportingStage(
         CircularProgressIndicator(
             progress = { progress },
             modifier = Modifier.size(100.dp),
-            color = SystemPink,
+            color = AccentGreen,
             trackColor = Gray4,
             strokeWidth = 8.dp
         )
@@ -858,7 +862,7 @@ private fun CompleteStage(
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = SystemPink)
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
         ) {
             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
@@ -930,7 +934,7 @@ private fun ErrorStage(
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = SystemPink)
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
         ) {
             Icon(Icons.Rounded.Refresh, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))

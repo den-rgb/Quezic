@@ -97,7 +97,7 @@ fun LibraryScreen(
                             Icons.Rounded.Add,
                             contentDescription = "Create playlist",
                             modifier = Modifier.padding(12.dp),
-                            tint = SystemPink
+                            tint = AccentGreen
                         )
                     }
                 }
@@ -291,7 +291,7 @@ private fun SongItem(
                             Icons.Rounded.Favorite,
                             contentDescription = "Favorite",
                             modifier = Modifier.size(16.dp),
-                            tint = SystemPink
+                            tint = AccentGreen
                         )
                     }
                 }
@@ -384,7 +384,7 @@ private fun SongItem(
                             Icon(
                                 if (song.isFavorite) Icons.Rounded.HeartBroken else Icons.Rounded.Favorite,
                                 null,
-                                tint = SystemPink
+                                tint = AccentGreen
                             )
                         },
                         onClick = {
@@ -479,7 +479,7 @@ private fun ArtistCard(
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
-                            colors = listOf(SystemPink, SystemPurple)
+                            colors = listOf(AccentGreen, SystemPurple)
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -636,7 +636,7 @@ private fun PlaylistsTab(
                         modifier = Modifier
                             .size(56.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(SystemPink),
+                            .background(AccentGreen),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -750,7 +750,7 @@ private fun PlaylistItem(
                     .clip(RoundedCornerShape(12.dp))
                     .background(
                         Brush.linearGradient(
-                            colors = listOf(SystemPink, SystemPurple)
+                            colors = listOf(AccentGreen, SystemPurple)
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -871,9 +871,9 @@ private fun CreatePlaylistDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SystemPink,
-                        focusedLabelColor = SystemPink,
-                        cursorColor = SystemPink,
+                        focusedBorderColor = AccentGreen,
+                        focusedLabelColor = AccentGreen,
+                        cursorColor = AccentGreen,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White
                     )
@@ -886,9 +886,9 @@ private fun CreatePlaylistDialog(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SystemPink,
-                        focusedLabelColor = SystemPink,
-                        cursorColor = SystemPink,
+                        focusedBorderColor = AccentGreen,
+                        focusedLabelColor = AccentGreen,
+                        cursorColor = AccentGreen,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White
                     )
@@ -905,7 +905,7 @@ private fun CreatePlaylistDialog(
                 },
                 enabled = name.isNotBlank()
             ) {
-                Text("Create", color = SystemPink)
+                Text("Create", color = AccentGreen)
             }
         },
         dismissButton = {

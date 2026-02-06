@@ -76,14 +76,16 @@ class DownloadWorker @AssistedInject constructor(
             }
 
             // Determine file extension based on content type or URL
-            // YouTube audio is typically M4A/AAC, SoundCloud can be MP3
+            // YouTube audio via proxy is typically M4A/AAC, SoundCloud can be MP3
+            // Note: Proxy URLs don't have file extensions, so we rely on source type
             val extension = when {
                 streamUrl.contains(".mp3") -> "mp3"
                 streamUrl.contains(".m4a") -> "m4a"
                 streamUrl.contains(".webm") -> "webm"
                 streamUrl.contains(".opus") -> "opus"
                 sourceType == SourceType.SOUNDCLOUD -> "mp3"
-                else -> "m4a" // YouTube audio is typically M4A/AAC
+                sourceType == SourceType.YOUTUBE -> "m4a" // YouTube audio is M4A/AAC
+                else -> "m4a"
             }
 
             // Create file name
@@ -96,29 +98,53 @@ class DownloadWorker @AssistedInject constructor(
             Log.d(TAG, "Saving to: ${file.absolutePath}")
 
             // Actually download the audio file
+            // Note: followRedirects handles both same-protocol and cross-protocol redirects
             val client = OkHttpClient.Builder()
                 .connectTimeout(60, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .writeTimeout(120, TimeUnit.SECONDS)
                 .followRedirects(true)
                 .followSslRedirects(true)
+                .retryOnConnectionFailure(true)
                 .build()
 
             val requestBuilder = Request.Builder()
                 .url(streamUrl)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
-            // Add YouTube-specific headers if needed
-            if (sourceType == SourceType.YOUTUBE) {
+            // Add YouTube-specific headers only for direct YouTube URLs (not proxy URLs)
+            // Proxy URLs handle authentication internally
+            if (sourceType == SourceType.YOUTUBE && streamUrl.contains("googlevideo.com")) {
                 requestBuilder
                     .header("Origin", "https://www.youtube.com")
                     .header("Referer", "https://www.youtube.com/")
             }
 
             val request = requestBuilder.build()
-            val response = client.newCall(request).execute()
+            var response = client.newCall(request).execute()
+
+            // Handle redirects manually if OkHttp didn't follow them
+            var redirectCount = 0
+            while (response.code in 300..399 && redirectCount < 5) {
+                val location = response.header("Location")
+                if (location == null) {
+                    Log.e(TAG, "Redirect without Location header")
+                    break
+                }
+                Log.d(TAG, "Following redirect to: ${location.take(100)}...")
+                response.close()
+                
+                val redirectRequest = Request.Builder()
+                    .url(location)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+                    .build()
+                response = client.newCall(redirectRequest).execute()
+                redirectCount++
+            }
 
             if (!response.isSuccessful) {
                 Log.e(TAG, "Download failed with code: ${response.code}")
+                response.close()
                 return@withContext Result.failure(
                     workDataOf(KEY_ERROR to "Download failed: HTTP ${response.code}")
                 )

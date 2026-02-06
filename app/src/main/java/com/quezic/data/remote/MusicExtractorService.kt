@@ -386,6 +386,27 @@ class MusicExtractorService @Inject constructor(
         // Extract video ID for proxy
         val videoId = extractVideoId(videoUrl)
         
+        // For downloads, ONLY use the proxy - direct URLs are IP-locked and will fail with 403
+        if (forDownload) {
+            if (proxySettings.isProxyEnabled && videoId != null) {
+                Log.d(TAG, "Download: Trying proxy for: $videoId")
+                try {
+                    val proxyUrl = getStreamFromProxy(videoId, forDownload = true)
+                    if (proxyUrl != null) {
+                        Log.d(TAG, "✓ Got download URL via proxy: ${proxyUrl.take(100)}...")
+                        return@withContext proxyUrl
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Proxy extraction failed for download: ${e.message}")
+                }
+            }
+            // Downloads MUST use proxy - direct URLs will fail with 403
+            Log.e(TAG, "Download failed: Proxy not available or failed for: $videoUrl")
+            return@withContext null
+        }
+        
+        // For streaming, try multiple sources
+        
         // 0. Try self-hosted proxy first (most reliable when configured)
         if (proxySettings.isProxyEnabled && videoId != null) {
             Log.d(TAG, "Trying self-hosted proxy for: $videoId (forDownload=$forDownload)")
@@ -427,13 +448,6 @@ class MusicExtractorService @Inject constructor(
             }
         } catch (e: Exception) {
             Log.w(TAG, "Direct YouTube API failed: ${e.message}", e)
-        }
-        
-        // For downloads, don't use third-party APIs as they may return HLS
-        // Note: The proxy is already tried first and returns direct URLs for downloads
-        if (forDownload) {
-            Log.e(TAG, "All download methods failed for: $videoUrl")
-            return@withContext null
         }
         
         // 3. Try Piped API
@@ -885,14 +899,14 @@ class MusicExtractorService @Inject constructor(
     
     /**
      * Get stream URL from self-hosted proxy server.
-     * For streaming: Uses /proxy endpoint which streams audio through the server (more reliable)
-     * For downloads: Uses the direct YouTube URL from /stream endpoint (required for download manager)
+     * Both streaming and downloads use the /proxy endpoint which streams audio through the server.
+     * This is required because direct YouTube URLs are IP-locked to the proxy server.
      */
     private fun getStreamFromProxy(videoId: String, forDownload: Boolean = false): String? {
-        val proxyUrl = proxySettings.proxyUrl ?: return null
-        val baseUrl = proxyUrl.trimEnd('/')
+        val baseUrl = proxySettings.proxyUrl ?: return null
+        // proxyUrl is already normalized (trimmed, with https://)
         
-        // Get stream info from /stream endpoint
+        // Get stream info from /stream endpoint to verify availability
         val streamEndpoint = "$baseUrl/stream/$videoId"
         Log.d(TAG, "Proxy: Requesting stream info from $streamEndpoint")
         
@@ -920,25 +934,13 @@ class MusicExtractorService @Inject constructor(
                 }
                 
                 val mimeType = json.optString("mimeType", "")
-                val directUrl = json.optString("url", "")
                 Log.d(TAG, "Proxy: Stream available, mimeType: $mimeType")
                 
-                if (forDownload) {
-                    // For downloads, use the direct YouTube URL
-                    // The download manager needs a direct URL, not a proxy
-                    if (directUrl.isNotBlank()) {
-                        Log.d(TAG, "Proxy: Using direct URL for download")
-                        return@use directUrl
-                    } else {
-                        Log.w(TAG, "Proxy: No direct URL available for download")
-                        return@use null
-                    }
-                } else {
-                    // For streaming, use the proxy endpoint for reliability
-                    val proxyStreamUrl = "$baseUrl/proxy/$videoId"
-                    Log.d(TAG, "Proxy: Using stream proxy URL: $proxyStreamUrl")
-                    return@use proxyStreamUrl
-                }
+                // Always use the proxy endpoint for both streaming and downloads
+                // Direct YouTube URLs are IP-locked to the proxy server and will fail with 403
+                val proxyStreamUrl = "$baseUrl/proxy/$videoId"
+                Log.d(TAG, "Proxy: Using proxy URL for ${if (forDownload) "download" else "streaming"}: $proxyStreamUrl")
+                return@use proxyStreamUrl
             }
         } catch (e: Exception) {
             Log.e(TAG, "Proxy request failed: ${e.message}")

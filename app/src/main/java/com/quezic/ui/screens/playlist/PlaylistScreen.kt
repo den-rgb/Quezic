@@ -1,5 +1,8 @@
 package com.quezic.ui.screens.playlist
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +43,26 @@ fun PlaylistScreen(
     onPlayAll: (List<Song>) -> Unit,
     viewModel: PlaylistViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    
+    // Image picker launcher
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            // Take persistable permission so we can access the image later
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Some URIs don't support persistable permissions, that's ok
+            }
+            viewModel.onImagePicked(it.toString())
+        }
+    }
+    
     LaunchedEffect(playlistId) {
         viewModel.loadPlaylist(playlistId)
     }
@@ -46,6 +70,14 @@ fun PlaylistScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playlist = uiState.playlist
     val songs = uiState.songs
+    
+    // Handle image pick request
+    LaunchedEffect(uiState.requestImagePick) {
+        if (uiState.requestImagePick) {
+            imagePickerLauncher.launch("image/*")
+            viewModel.onImagePickHandled()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -57,7 +89,7 @@ fun PlaylistScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = SystemPink)
+                CircularProgressIndicator(color = AccentGreen)
             }
         } else {
             LazyColumn(
@@ -72,8 +104,10 @@ fun PlaylistScreen(
                             songCount = songs.size,
                             duration = playlist.formattedDuration,
                             coverUrl = playlist.coverUrl,
+                            notDownloadedCount = viewModel.getNotDownloadedCount(),
                             onPlayAll = { if (songs.isNotEmpty()) onPlayAll(songs) },
-                            onShuffle = { if (songs.isNotEmpty()) onPlayAll(songs.shuffled()) }
+                            onShuffle = { if (songs.isNotEmpty()) onPlayAll(songs.shuffled()) },
+                            onDownloadAll = { viewModel.downloadAllSongs() }
                         )
                         
                         // Top bar overlay
@@ -189,22 +223,49 @@ fun PlaylistScreen(
                 }
 
                 // Suggestions section
-                if (uiState.suggestions.isNotEmpty()) {
+                if (uiState.suggestions.isNotEmpty() || uiState.isLoadingSuggestions) {
                     item {
                         Spacer(modifier = Modifier.height(24.dp))
-                        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                            Text(
-                                text = "Suggested Songs",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Based on songs in this playlist",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Gray1
-                            )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Discover New Music",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Artists you might enjoy",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Gray1
+                                )
+                            }
+                            
+                            IconButton(
+                                onClick = { viewModel.refreshSuggestions() },
+                                enabled = !uiState.isLoadingSuggestions
+                            ) {
+                                if (uiState.isLoadingSuggestions) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = AccentGreen,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Rounded.Refresh,
+                                        contentDescription = "Refresh suggestions",
+                                        tint = AccentGreen
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                     }
@@ -228,10 +289,12 @@ fun PlaylistScreen(
         EditPlaylistDialog(
             currentName = playlist.name,
             currentDescription = playlist.description ?: "",
+            currentCoverUrl = uiState.pendingCoverUri ?: playlist.coverUrl,
             onDismiss = { viewModel.hideEditDialog() },
-            onSave = { name, description ->
-                viewModel.updatePlaylist(name, description)
-            }
+            onSave = { name, description, coverUrl ->
+                viewModel.updatePlaylist(name, description, coverUrl)
+            },
+            onPickImage = { viewModel.requestImagePick() }
         )
     }
 
@@ -279,8 +342,10 @@ private fun PlaylistHeader(
     songCount: Int,
     duration: String,
     coverUrl: String?,
+    notDownloadedCount: Int,
     onPlayAll: () -> Unit,
-    onShuffle: () -> Unit
+    onShuffle: () -> Unit,
+    onDownloadAll: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -304,7 +369,7 @@ private fun PlaylistHeader(
                 .clip(RoundedCornerShape(16.dp))
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(SystemPink, SystemPurple)
+                        colors = listOf(AccentGreen, SystemPurple)
                     )
                 ),
             contentAlignment = Alignment.Center
@@ -368,10 +433,10 @@ private fun PlaylistHeader(
                 onClick = onShuffle,
                 shape = RoundedCornerShape(25.dp),
                 color = Gray5,
-                modifier = Modifier.padding(end = 12.dp)
+                modifier = Modifier.padding(end = 8.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -380,10 +445,10 @@ private fun PlaylistHeader(
                         modifier = Modifier.size(18.dp),
                         tint = Color.White
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         "Shuffle",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
                     )
@@ -393,10 +458,11 @@ private fun PlaylistHeader(
             Surface(
                 onClick = onPlayAll,
                 shape = RoundedCornerShape(25.dp),
-                color = SystemPink
+                color = AccentGreen,
+                modifier = Modifier.padding(end = 8.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -405,13 +471,41 @@ private fun PlaylistHeader(
                         modifier = Modifier.size(18.dp),
                         tint = Color.White
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        "Play All",
-                        style = MaterialTheme.typography.labelLarge,
+                        "Play",
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White
                     )
+                }
+            }
+            
+            // Download All button - only show if there are songs not downloaded
+            if (notDownloadedCount > 0) {
+                Surface(
+                    onClick = onDownloadAll,
+                    shape = RoundedCornerShape(25.dp),
+                    color = Gray5
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = SystemBlue
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "$notDownloadedCount",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SystemBlue
+                        )
+                    }
                 }
             }
         }
@@ -492,7 +586,7 @@ private fun PlaylistSongItem(
                             Icons.Rounded.Favorite,
                             contentDescription = "Favorite",
                             modifier = Modifier.size(14.dp),
-                            tint = SystemPink
+                            tint = AccentGreen
                         )
                     }
                 }
@@ -586,7 +680,7 @@ private fun PlaylistSongItem(
                             Icon(
                                 if (song.isFavorite) Icons.Rounded.HeartBroken else Icons.Rounded.Favorite,
                                 null,
-                                tint = SystemPink
+                                tint = AccentGreen
                             )
                         },
                         onClick = {
@@ -696,7 +790,7 @@ private fun SuggestionItem(
                 Icon(
                     Icons.Rounded.AddCircle,
                     contentDescription = "Add to playlist",
-                    tint = SystemPink,
+                    tint = AccentGreen,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -708,8 +802,10 @@ private fun SuggestionItem(
 private fun EditPlaylistDialog(
     currentName: String,
     currentDescription: String,
+    currentCoverUrl: String?,
     onDismiss: () -> Unit,
-    onSave: (name: String, description: String?) -> Unit
+    onSave: (name: String, description: String?, coverUrl: String?) -> Unit,
+    onPickImage: () -> Unit
 ) {
     var name by remember { mutableStateOf(currentName) }
     var description by remember { mutableStateOf(currentDescription) }
@@ -726,6 +822,59 @@ private fun EditPlaylistDialog(
         },
         text = {
             Column {
+                // Cover image picker
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Gray4)
+                        .clickable { onPickImage() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (currentCoverUrl != null) {
+                        AsyncImage(
+                            model = currentCoverUrl,
+                            contentDescription = "Cover",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        // Overlay edit icon
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Edit,
+                                contentDescription = "Change cover",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    } else {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Rounded.AddPhotoAlternate,
+                                contentDescription = "Add cover",
+                                tint = Gray1,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Add Cover",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Gray1
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -733,9 +882,9 @@ private fun EditPlaylistDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SystemPink,
-                        focusedLabelColor = SystemPink,
-                        cursorColor = SystemPink,
+                        focusedBorderColor = AccentGreen,
+                        focusedLabelColor = AccentGreen,
+                        cursorColor = AccentGreen,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White
                     )
@@ -748,9 +897,9 @@ private fun EditPlaylistDialog(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SystemPink,
-                        focusedLabelColor = SystemPink,
-                        cursorColor = SystemPink,
+                        focusedBorderColor = AccentGreen,
+                        focusedLabelColor = AccentGreen,
+                        cursorColor = AccentGreen,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White
                     )
@@ -761,13 +910,13 @@ private fun EditPlaylistDialog(
             TextButton(
                 onClick = {
                     if (name.isNotBlank()) {
-                        onSave(name, description.ifBlank { null })
+                        onSave(name, description.ifBlank { null }, currentCoverUrl)
                         onDismiss()
                     }
                 },
                 enabled = name.isNotBlank()
             ) {
-                Text("Save", color = SystemPink)
+                Text("Save", color = AccentGreen)
             }
         },
         dismissButton = {

@@ -201,7 +201,7 @@ private fun QuickActionRow(
             modifier = Modifier.weight(1f),
             icon = Icons.Rounded.Favorite,
             title = "Liked",
-            color = SystemPink,
+            color = AccentGreen,
             onClick = onPlayFavorites
         )
         QuickActionPill(
@@ -239,22 +239,24 @@ private fun QuickActionPill(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 icon,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 tint = color
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 title,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = Color.White,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
@@ -301,7 +303,7 @@ private fun LargeSongCard(
                     .padding(8.dp)
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(SystemPink),
+                    .background(AccentGreen),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -348,7 +350,7 @@ private fun PlaylistCard(
                 .clip(RoundedCornerShape(12.dp))
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(SystemPink, SystemPurple)
+                        colors = listOf(AccentGreen, SystemPurple)
                     )
                 ),
             contentAlignment = Alignment.Center
@@ -446,7 +448,7 @@ private fun CompactSongRow(
                         text = "${song.playCount}",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        color = SystemPink
+                        color = AccentGreen
                     )
                 }
             }
@@ -456,7 +458,7 @@ private fun CompactSongRow(
             Icon(
                 Icons.Rounded.PlayArrow,
                 contentDescription = "Play",
-                tint = SystemPink,
+                tint = AccentGreen,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -509,7 +511,7 @@ private fun EmptyLibraryState(onNavigateToSearch: () -> Unit) {
             onClick = onNavigateToSearch,
             shape = RoundedCornerShape(25.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = SystemPink
+                containerColor = AccentGreen
             ),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp)
         ) {

@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.quezic.ui.components.AddToPlaylistDialog
 import com.quezic.ui.components.MiniPlayer
 import com.quezic.ui.navigation.Screen
 import com.quezic.ui.navigation.bottomNavItems
@@ -31,7 +32,7 @@ import com.quezic.ui.screens.playlist.PlaylistScreen
 import com.quezic.ui.screens.search.SearchScreen
 import com.quezic.ui.theme.Gray1
 import com.quezic.ui.theme.Gray6
-import com.quezic.ui.theme.SystemPink
+import com.quezic.ui.theme.AccentGreen
 import com.quezic.ui.viewmodel.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,10 +45,26 @@ fun QuezicApp(
     val currentDestination = navBackStackEntry?.destination
     
     val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()
+    val playlistDialogState by playerViewModel.playlistDialogState.collectAsStateWithLifecycle()
     val showMiniPlayer = playerState.currentSong != null && 
         currentDestination?.route != Screen.Player.route
 
     val snackbarHostState = remember { SnackbarHostState() }
+    
+    // Add to Playlist Dialog
+    if (playlistDialogState.showDialog) {
+        AddToPlaylistDialog(
+            playlists = playlistDialogState.playlists,
+            songInPlaylists = playlistDialogState.songInPlaylists,
+            onDismiss = { playerViewModel.hideAddToPlaylistDialog() },
+            onAddToPlaylist = { playlistId -> playerViewModel.addSongToPlaylist(playlistId) },
+            onRemoveFromPlaylist = { playlistId -> playerViewModel.removeSongFromPlaylist(playlistId) },
+            onCreateNewPlaylist = { 
+                playerViewModel.hideAddToPlaylistDialog()
+                // Could navigate to create playlist here
+            }
+        )
+    }
 
     // Show error snackbar
     LaunchedEffect(playerState.error) {
@@ -126,8 +143,8 @@ fun QuezicApp(
                                 }
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = SystemPink,
-                                selectedTextColor = SystemPink,
+                                selectedIconColor = AccentGreen,
+                                selectedTextColor = AccentGreen,
                                 unselectedIconColor = Gray1,
                                 unselectedTextColor = Gray1,
                                 indicatorColor = Color.Transparent
@@ -186,7 +203,8 @@ fun QuezicApp(
             
             composable(Screen.Player.route) {
                 PlayerScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onShowAddToPlaylist = { song -> playerViewModel.showAddToPlaylistDialog(song) }
                 )
             }
             

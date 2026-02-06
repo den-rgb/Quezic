@@ -83,4 +83,15 @@ class SettingsViewModel @Inject constructor(
     fun clearTestResult() {
         _uiState.update { it.copy(proxyTestResult = null) }
     }
+    
+    fun resetToDefaultProxy() {
+        val defaultUrl = ProxySettings.DEFAULT_PROXY_URL
+        proxySettings.proxyUrl = defaultUrl
+        _uiState.update { 
+            it.copy(
+                proxyUrl = defaultUrl, 
+                proxyTestResult = null
+            ) 
+        }
+    }
 }

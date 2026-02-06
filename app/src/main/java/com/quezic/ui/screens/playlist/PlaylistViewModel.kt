@@ -21,8 +21,11 @@ data class PlaylistUiState(
     val suggestions: List<SearchResult> = emptyList(),
     val allPlaylists: List<Playlist> = emptyList(),
     val isLoading: Boolean = true,
+    val isLoadingSuggestions: Boolean = false,
     val showEditDialog: Boolean = false,
-    val showDeleteConfirmation: Boolean = false
+    val showDeleteConfirmation: Boolean = false,
+    val pendingCoverUri: String? = null,
+    val requestImagePick: Boolean = false
 )
 
 @HiltViewModel
@@ -76,14 +79,23 @@ class PlaylistViewModel @Inject constructor(
         }
     }
 
-    private fun loadSuggestions(songs: List<Song>) {
+    private fun loadSuggestions(songs: List<Song>, forceRefresh: Boolean = false) {
         viewModelScope.launch {
             try {
-                val suggestions = recommendationEngine.getRecommendations(songs, limit = 5)
-                _uiState.update { it.copy(suggestions = suggestions) }
+                _uiState.update { it.copy(isLoadingSuggestions = true) }
+                val suggestions = recommendationEngine.getRecommendations(songs, limit = 5, forceRefresh = forceRefresh)
+                _uiState.update { it.copy(suggestions = suggestions, isLoadingSuggestions = false) }
             } catch (e: Exception) {
                 // Silently fail for suggestions
+                _uiState.update { it.copy(isLoadingSuggestions = false) }
             }
+        }
+    }
+    
+    fun refreshSuggestions() {
+        val songs = _uiState.value.songs
+        if (songs.isNotEmpty()) {
+            loadSuggestions(songs, forceRefresh = true)
         }
     }
 
@@ -110,11 +122,23 @@ class PlaylistViewModel @Inject constructor(
     }
 
     fun showEditDialog() {
-        _uiState.update { it.copy(showEditDialog = true) }
+        _uiState.update { it.copy(showEditDialog = true, pendingCoverUri = null) }
     }
 
     fun hideEditDialog() {
-        _uiState.update { it.copy(showEditDialog = false) }
+        _uiState.update { it.copy(showEditDialog = false, pendingCoverUri = null, requestImagePick = false) }
+    }
+    
+    fun requestImagePick() {
+        _uiState.update { it.copy(requestImagePick = true) }
+    }
+    
+    fun onImagePickHandled() {
+        _uiState.update { it.copy(requestImagePick = false) }
+    }
+    
+    fun onImagePicked(uri: String?) {
+        _uiState.update { it.copy(pendingCoverUri = uri, requestImagePick = false) }
     }
 
     fun showDeleteConfirmation() {
@@ -125,13 +149,14 @@ class PlaylistViewModel @Inject constructor(
         _uiState.update { it.copy(showDeleteConfirmation = false) }
     }
 
-    fun updatePlaylist(name: String, description: String?) {
+    fun updatePlaylist(name: String, description: String?, coverUrl: String? = null) {
         viewModelScope.launch {
             _uiState.value.playlist?.let { playlist ->
                 playlistRepository.updatePlaylist(
                     playlist.copy(
                         name = name,
                         description = description,
+                        coverUrl = coverUrl ?: playlist.coverUrl,
                         updatedAt = System.currentTimeMillis()
                     )
                 )
@@ -166,6 +191,17 @@ class PlaylistViewModel @Inject constructor(
     
     fun downloadSong(song: Song) {
         downloadManager.downloadSong(song, StreamQuality.HIGH)
+    }
+    
+    fun downloadAllSongs() {
+        val songs = _uiState.value.songs
+        songs.filter { !it.isDownloaded }.forEach { song ->
+            downloadManager.downloadSong(song, StreamQuality.HIGH)
+        }
+    }
+    
+    fun getNotDownloadedCount(): Int {
+        return _uiState.value.songs.count { !it.isDownloaded }
     }
     
     fun deleteDownload(song: Song) {
