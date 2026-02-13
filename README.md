@@ -2,6 +2,8 @@
 
 A modern Android music library app built with Kotlin and Jetpack Compose. Quezic allows you to search, download, and organize music from multiple sources including YouTube and SoundCloud, with smart playlist recommendations powered by content analysis.
 
+**IMPORTANT** In order for youtube search and download to work, press the cog wheel at the top right and authenticate locally with youtube.
+
 ## Features
 
 ### Music Search & Discovery
